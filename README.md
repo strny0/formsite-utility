@@ -12,6 +12,14 @@ A faster alternative to a manual export from the formsite website. It uses the f
 You can install the required packages with:
 `pip install -r requirements.txt`
 
+The required packages are:
+```
+aiohttp
+regex
+openpyxl
+pandas
+```
+
 ## Usage
 
 **Required arguments:**
@@ -23,54 +31,142 @@ python getform.py -u USERNAME -t TOKEN -f FORM -s SERVER -d DIRECTORY
 [-h] [--afterref AFTERREF] [--beforeref BEFOREREF] [--afterdate AFTERDATE] [--beforedate BEFOREDATE] [--resultslabels RESULTSLABELS] [-r] [-o [OUTPUT_FILE]] [-x [EXTRACT_LINKS]] [-X LINKS_REGEX] [-D [DOWNLOAD_LINKS]] [--sort {asc,desc}] [-l] [-g] [-V] [-H] [--no_items]
 ```
 
+# **Examples:**
+## **Outputing to a file:**
 
+You can use the `-o` flag to output your export to a file. If you don't specify this flag, no results will be outputted. For reasons as to why you wouldn't include this flag, please see ***File downloads:*** below.
 
+You can leave the `-o` flag by itself or you can specify a path, either relative or absolute to a file you want to output to. If you don't include a path, it will default to its current directory, the file will be a csv with the name in the following format:
 ```
-Arguments:
-  -h, --help            show this help message and exit
-  -u USERNAME, --username USERNAME
-                        Username of the account used to create your API token. Required.
-  -t TOKEN, --token TOKEN
-                        Your Formsite API token. Required.
-  -f FORM, --form FORM  Your Formsite form ID. Can be found under [Share > Links > Directory]. Required.
-  -s SERVER, --server SERVER
-                        Your Formsite server. A part of the url. https://fsX.forms... <- the fsX part. Required.
-  -d DIRECTORY, --directory DIRECTORY
-                        Your Formsite directory. Can be found under [Share > Links > Directory]. Required.
-  --afterref AFTERREF   Get results greater than a specified Reference #. Must be an integer.
-  --beforeref BEFOREREF
-                        Get results lesser than a specified Reference #. Must be an integer.
-  --afterdate AFTERDATE
-                        Get results after a specified date. Must be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS. This date is in your local timezone (unless UTC formatted).
-  --beforedate BEFOREDATE
-                        Get results before a specified date. Must be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS. This date is in your local timezone (unless UTC formatted).
-  --resultslabels RESULTSLABELS
-                        Use specific results labels for your CSV headers. Defaults to 0, which takes the first set results labels or if those are not available, default question labels.
-  -r, --refresh_headers
-                        If you include this flag, items_formid.json will be re-downloaded with latest headers.
-  -o [OUTPUT_FILE], --output_file [OUTPUT_FILE]
-                        Specify output file name and location. Defaults to export_yyyymmdd_formid.csv in the folder of the script.
-  -x [EXTRACT_LINKS], --extract_links [EXTRACT_LINKS]
-                        If you include this flag, you will get a text file that has all links that start with formsite url stored. You can specify file name or location, for example '-x
-                        C:\Users\MyUsername\Desktop\download_links.txt'. If you don't specify a location, it will default to the folder of the script.
-  -X LINKS_REGEX, --links_regex LINKS_REGEX
-                        Keep only links that match the regex you provide. Won't do anything if -x or -d arguments are not provided. Defaults to '.+'. Example usage: '-X \.json$' would only give you files that have .json  
-                        extension.
-  -D [DOWNLOAD_LINKS], --download_links [DOWNLOAD_LINKS]
-                        If you include this flag, all formsite links in the export will be downloaded to a folder. You can specify location, for example '-d C:\Users\MyUsername\Desktop\downloads'. If you don't specify a  
-                        location, it will default to the folder of the script.
-  --sort {asc,desc}     Determines how the output CSV will be sorted. Defaults to descending.
-  -l, --list_columns    If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments.
-  -g, --generate_results_files
-                        If you use this flag, program will output raw results in json format from API requests. Useful for debugging purposes.
-  -V, --version         Returns version of the script.
-  -H, --headers         Prints the headers from the first results API request, then quits the program. Overrides other options.
-  --no_items            If you use this flag, program will not store headers for later use.
+export_formID_date.csv
+```
+If you specify the file extension to be `.xlsx` the results export will be an excel file. If you don't or you choose a format other than excel, you will get a `.csv`
+
+On Windows in either powershell or cmd:
+```powershell
+> python .\getform.py -u username -t token -f form_id -d directory -s server -o .\exports\export_projectName.xlsx
 ```
 
+On Unix:
+```bash
+$ python3 getform.py -u username -t token -f form_id -d directory -s server -o ./exports/export_projectName.csv
+```
+**NOTE: `PUTTING THE PATH IN QUOTES IS OPTIONAL, but recommended if your path contains a space`**
 
-## Notes
+## **After and before Reference #**:
 
-More info can be found at Formsite API v2 help page: https://support.formsite.com/hc/en-us/articles/360000288594-API You can find API related information of your specific form under: 
+You can provide arguments `--afterref *int* and --beforeref *int*` to specify an interval of which reference numbers to get from your export. It is the same as setting a filter based on reference number when doing an export from the formsite website.
 
-**[Form Settings > Integrations > Formsite API]**
+On Windows in powershell or cmd, run:
+```
+> python .\getform.py -u username -t token -f form_id -d directory -s server --afterref 14856178 ---beforeref 15063325 -o
+```
+On Unix:
+```bash
+$ python3 getform.py -u username -t token -f form_id -d directory -s server --afterref 14856178 ---beforeref 15063325 -o
+```
+This will retrieve all results in between reference numbers 14856178 and 15063325. You can also specify only afterref or only beforeref by itself, which would give you its respective results. You can also omit this argument entierly, which would give you all results currently present in the form.
+
+## **After and before Date**:
+
+You can provide arguments `--afterdate *date* and --beforedate *date*` to specify an interval of which dates to get from your export. It is the same as setting a filter based on date number when doing an export from the formsite website. 
+
+The date must be in `ISO 8601` format, which in other words means:
+```
+yyyy-mm-ddTHH:MM:SSZ  example: 2021-01-20T12:00:00Z is 20th Januray, 2021 at noon
+```
+
+On Windows in powershell or cmd:
+```powershell
+> python .\getform.py -u username -t token -f form_id -d directory -s server --afterdate '2021-01-01T00:00:00Z' ---beforedate '2021-02-01T00:00:00Z' -o
+```
+On Unix:
+```bash
+$ python3 getform.py -u username -t token -f form_id -d directory -s server --afterdate '2021-01-01T00:00:00Z' ---beforedate '2021-02-01T00:00:00Z' -o
+```
+**NOTE: `THE QUOTES ARE OPTIONAL`**
+
+This will retrieve all results in for the month of January. You can also specify only afterdate or only beforedate by itself, which would give you its respective results. You can also omit this argument entierly, which would give you all results currently present in the form.
+
+### Warning:
+
+The dates provided are in your **local timezone**. This can become a problem if your organizations' formsite account is set to a particular timezone you are not in, especially when deleting results/attachments using date filters. *Please be careful and account for the offset.*
+
+## **File downloads:**
+
+You can use the `-x` flag to extract all links that begin with the formsite base url into a text file, such as:
+```
+https://fsXX.formsite.com/directory/files/f-XXX-XXX-reference#_filename.ext
+```
+The links file defaults to the same directory as the `getform.py` with the file name `links_{formID}_{timestamp}.txt`
+
+You can use the `-D` option to download all links to a directory you specify, just like with the `-o` argument. The file will be saved with the filename in the link `reference#_filename.ext`
+
+### Links regex:
+
+You can also specify a regex to filter links. You will only get links that contain a match of a regex you provide with the `-X` option:
+```
+ex: \.json$   - will only return files that end with .json
+```
+
+On Windows in either powershell or cmd:
+```powershell
+> python .\getform.py -u username -t token -f form_id -d directory -s server -x -X \.png$
+```
+*will return a links.txt with links to all png files in export*
+
+On Unix:
+```bash
+$ python3 ./getform.py -u username -t token -f form_id -d directory -s server -D './download_03/' -X \.jpg$
+```
+*will create a directory download_03 in the same folder as getform.py and save all jpg files in the export there*
+
+## **Results labels:**
+
+Results labels are the names of columns of items you put on your form. The default option is to use the default question labels you would put on your form, such as "What is your email address?" or "Your email:" or simply "E-mail:" but for actually working with the data, it is easier and clearer to use a feature formsite supports called Results labels, where you can set your own names of these columns for exports. 
+
+You can find the ID of your labels under `[Form Settings > Integrations > Formsite API]`
+
+You can set them with the `--resultslabels *id*` argument.
+
+## **Other options:**
+
+Among other toggleable options are:
+
+`-h --help` - shows a help message
+
+`-r --refresh_headers` - re-downloads items.json, a file that contains header labels of your particular results labels.
+
+`--sort [asc | desc]` - an option that sorts reference numbers in ascending or descending order, defaults to descending
+
+`-l --list_columns` - shows you the IDs of each column, useful for the 
+`--search_xxx` options (*NOT YET IMPLEMENTED*)
+
+`-g --generate_results` - by default, the results.json file you get from the API requests are not saved. if you include this option, you will save them
+
+`-V --version` - displays the current version of the programs and checks for updates
+
+`-v --verbose` - displays more information about the progress of the program
+
+`--no_items` - by default, items.json is saved in the same directory as getform.py, this can save 1 API call because it won't have to request it again unless you specify otherwise with `-r`. if you include this option, items.json will not be saved
+
+# Notes
+
+More info can be found at Formsite API v2 help page: 
+
+**https://support.formsite.com/hc/en-us/articles/360000288594-API**
+
+You can find API related information of your specific form under:
+```
+[Form Settings > Integrations > Formsite API] on the Formstie website
+```
+**API response error codes table:**
+```
+| code | description                                 |
+| 401  | Authentication info is missing or invalid.  |
+| 403  | Forbidden.                                  |
+| 404  | Path or object not found.                   |
+| 422  | Invalid parameter.                          |
+| 429  | Too many requests or too busy.              |
+| 5xx  | Unexpected internal error.                  |
+```
