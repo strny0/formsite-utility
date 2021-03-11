@@ -12,8 +12,9 @@
 #   2. methods
 #   3. program execution, usage of methods
 
-from sys import version_info #s         #s - standard library, #! - 3rd party module
+import sys #s         #s - standard library, #! - 3rd party module
 from datetime import datetime as dt #s
+from datetime import timedelta as td #s
 import time #s
 from io import open as open #s
 import os #s
@@ -21,8 +22,10 @@ from pathlib import Path as Path #s
 import json #s
 import csv #s
 import argparse #s
+import logging #s
 
-import pytz #1
+import pytz
+import dateutil as du #1
 import regex #!
 import asyncio #!
 import aiohttp #!
@@ -33,81 +36,83 @@ import openpyxl #!
 ## API  Methods ##
 ##              ##
     
-async def fetchContents_Results(verbose,response,page,stats,gen_files):
-    print(f'API GET {response.status}: ({page}/{stats.num_pages})') if verbose else 0
+async def fetchContents_Results(response,page,stats,gen_files):
+    logging.log.debug(f'API GET {response.status}: ({page}/{stats.num_pages})')
     contents = await response.content.read()
     return contents
 
-async def processResponse_Results(verbose,response,page,form_id,stats,gen_files):
-    contents = await fetchContents_Results(verbose,response,page,stats,gen_files)
+async def processResponse_Results(response,page,form_id,stats,gen_files):
+    contents = await fetchContents_Results(response,page,stats,gen_files)
     if gen_files == True:
         await WriteFile_async(contents,f"results_{form_id}_{page}.json")
     return contents
 
-async def getResponseContents_Result(verbose,session,url,page,param,form_id,stats,gen_files):
+async def getResponseContents_Result(session,url,page,param,form_id,stats,gen_files):
     param['page'] = page
     async with session.get(url,params=param) as response:
-        contents = await processResponse_Results(verbose,response,page,form_id,stats,gen_files)
+        contents = await processResponse_Results(response,page,form_id,stats,gen_files)
         if response.status != 200:
-            print(f"Error {page}/{stats.num_pages}: {response.status}")
-            print(json.loads(contents)['error'])
+            logging.log.critical(f"Error {page}/{stats.num_pages}: {response.status}")
+            logging.log.critical(json.loads(contents)['error'])
             quit()
         if page == 1:
             return contents,int(response.headers['Pagination-Page-Last'])
         else:
             return contents
 
-async def fetchContents_Items(verbose,response,form_id,gen_items):
-    print(f'API GET {response.status}: (items)') if verbose else 0
+async def fetchContents_Items(response,form_id,gen_items):
+    logging.log.debug(f'API GET {response.status}: (items)')
     contents = await response.content.read()
     return contents
 
-async def processResponse_Items(verbose,response,form_id,gen_items):
-    contents = await fetchContents_Items(verbose,response,form_id,gen_items)
+async def processResponse_Items(response,form_id,gen_items):
+    contents = await fetchContents_Items(response,form_id,gen_items)
     if gen_items == True:
-        await WriteFile_async(contents,f"items_{form_id}.json",verbose)
+        await WriteFile_async(contents,f"items_{form_id}.json")
     return contents
 
-async def getResponseContents_Items(verbose,session,url,stats,param,form_id,gen_items):
+async def getResponseContents_Items(session,url,stats,param,form_id,gen_items):
     async with session.get(url,params=param) as response:
-        contents = await processResponse_Items(verbose,response,form_id,gen_items)
+        contents = await processResponse_Items(response,form_id,gen_items)
+        stats.itemsCalled += 1
         if response.status != 200:
-            print(f"Error items: {response.status}")
-            print(json.loads(contents)['error'])
+            logging.log.critical(f"Error items: {response.status}")
+            logging.log.critical(json.loads(contents)['error'])
             quit()
         return contents
 
 async def processItems(args,session,url_items,stats,param_i):
     if args.refresh_headers == True:
-        items = await getResponseContents_Items(args.verbose,session,url_items,stats,param_i,args.form,args.no_items)
+        items = await getResponseContents_Items(session,url_items,stats,param_i,args.form,args.no_items)
     else:
         try:
-            print(f"Reading contents from items_{args.form}.json") if args.verbose == True else 0
+            logging.log.debug(f"Reading contents from items_{args.form}.json")
             with open(f"items_{args.form}.json",'r') as rf:
                 items = rf.read() 
         except:    
-            items = await getResponseContents_Items(args.verbose,session,url_items,stats,param_i,args.form,args.no_items)
+            items = await getResponseContents_Items(session,url_items,stats,param_i,args.form,args.no_items)
+            stats.APIcount += 1
     return items
 
 async def performAPIrequests(url,auth,param_i,param_r,args,stats):
     url_results = f"{url}/results"
     url_items = f"{url}/items"
     t0 = time.perf_counter()
-    print("API: starting requests")
+    logging.log.info("API: starting requests\n")
     async with aiohttp.ClientSession(headers=auth) as session:
         if args.list_columns == False:
-            first_result,stats.num_pages = await getResponseContents_Result(args.verbose,session,url_results,1,param_r,args.form,stats,args.generate_results_files)
+            first_result,stats.num_pages = await getResponseContents_Result(session,url_results,1,param_r,args.form,stats,args.generate_results_files)
             max_batch = 48
             num_batches = int(stats.num_pages/max_batch)+1
-            print(f"Total requests: {stats.num_pages}")
+            logging.log.info(f"Total requests: {stats.num_pages}")
             if int(stats.num_pages) > max_batch:
-                print(f"Warning, this will exceed rate limit.\nThis will perform {stats.num_pages} calls. They will be split into {num_batches} batches, you will have to wait 1 minute between each batch.\nProceeding in 5 seconds.")
+                logging.log.warning(f"This will exceed rate limit.\nThis will perform {stats.num_pages} calls. They will be split into {num_batches} batches, you will have to wait 1 minute between each batch.\nProceeding in 5 seconds.\n")
                 time.sleep(5)
             results_list = [first_result.decode("utf-8")]
             for batch in range(0,num_batches):
                 tasks = []
                 response_list = []
-                print(f"Processing batch {batch+1} of requests")
+                logging.log.info(f"Processing batch {batch+1} of requests")
                 upper_bound=max_batch+batch*max_batch
                 lower_bound=batch*max_batch
                 if lower_bound == 0:
@@ -115,18 +120,18 @@ async def performAPIrequests(url,auth,param_i,param_r,args,stats):
                 if upper_bound >= stats.num_pages:
                     upper_bound=stats.num_pages+1
                 for page in range(lower_bound,upper_bound):
-                    response_array = asyncio.ensure_future(getResponseContents_Result(args.verbose,session,url_results,page,param_r,args.form,stats,args.generate_results_files))
+                    response_array = asyncio.ensure_future(getResponseContents_Result(session,url_results,page,param_r,args.form,stats,args.generate_results_files))
                     tasks.append(response_array)
                 response_list_batch = await asyncio.gather(*tasks)
                 for response in response_list_batch:
                     response = response.decode("utf-8")
                     results_list.append(response)
                 if batch < num_batches-1:
-                    print("Waiting 60 seconds...")
+                    logging.log.warning("Waiting 60 seconds...")
                     time.sleep(60)            
         t1 = time.perf_counter() - t0
         items = await processItems(args,session,url_items,stats,param_i)
-        print(f"API: processed all requests in {t1:0.2f} seconds")
+        logging.log.info(f"API: processed all requests in {t1:0.2f} seconds\n")
         return results_list, items
 
 # Loads headers from response or json file if present, returns json obejct
@@ -138,8 +143,8 @@ def LoadItemsAsJsonObject(itemsContent):
         try:
             return json.loads(itemsContent)
         except:
-            print("Error: Items could not be loaded as json, invalid format.")
-            exit
+            logging.log.critical("Error: Items could not be loaded as json, invalid format.")
+            quit()
 
 # Loads results from response(s), returns an array of json object(s)
 def LoadResultsAsJsonObject(resultsResponse):
@@ -149,17 +154,8 @@ def LoadResultsAsJsonObject(resultsResponse):
             resultsPageArray.append(json.loads(result_page))
         return resultsPageArray
     except:
-        print("Error: Results could not be loaded as json, invalid format.")
+        logging.log.critical("Error: Results could not be loaded as json, invalid format.")
         quit()
-
-# Check if API error exists in response. If yes, outputs the error.
-def CheckIfAPIerrorExists(anyResponse):
-    try:
-        jsonObject = anyResponse.json()['error']
-        print("ERR:    %s : %s" % (jsonObject['status'],jsonObject['message']))
-        return True
-    except:
-        return False
 
 # Renames hardcoded columns and moves them such that main_df_part1 is at beginning, then there is room for separated items, then main_df_part2
 def RenameHardcodedCols(main_dataframe):
@@ -211,36 +207,36 @@ def CreateItemsHeaders(items_json):
     return ih.to_list()
 
 # Checks if python version is greater than 2.7 and the script version, only informs
-def CheckVersion(check_new,event_loop,verbose):
-    if not version_info >= (3, 4): #Check version
-       print("Your version of python is not compatible with this script.\nPlease upgrade to python 3.4 or newer.")
+def CheckVersion(check_new,event_loop):
+    if not sys.version_info >= (3, 4): #Check version
+       logging.log.critical("Your version of python is not compatible with this script.\nPlease upgrade to python 3.4 or newer.")
        quit()
-    current_version = "1.1.4"
-    future = asyncio.ensure_future(GetNewVersion("https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md",verbose))
+    current_version = "1.1.5"
+    future = asyncio.ensure_future(GetNewVersion("https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md"))
     latest_version = event_loop.run_until_complete(future)
     if current_version != latest_version:
-        print(f"Your script version: {current_version}\nLatest version:    {latest_version}")
-        print("You can include the -V flag to update next time you launch this program.")
+        logging.log.info(f"Your script version: {current_version}\nLatest version:    {latest_version}")
+        logging.log.info("You can include the -V flag to update next time you launch this program.")
         time.sleep(3)
     if check_new is True:
-        print(f"Your script version: {current_version}\nLatest version:    {latest_version}")
-        update = input("Do you want to update to the latest version? (y/n)\n")
+        logging.log.info(f"Your script version: {current_version}\nLatest version:    {latest_version}")
+        update = input("Do you want to update to the latest version? (y/n)\n\n")
         if update.lower() == "y":
-            future = asyncio.ensure_future(StartFileDownload(f"getform-{latest_version}.py","https://raw.githubusercontent.com/strny0/formsite-utility/main/getform.py",verbose))
+            future = asyncio.ensure_future(StartFileDownload(f"getform-{latest_version}.py","https://raw.githubusercontent.com/strny0/formsite-utility/main/getform.py"))
             event_loop.run_until_complete(future)
-            print("\nUpdate complete, please run the new file instead.")
+            logging.log.warning("Update complete, please run the new file instead.")
         quit()
         
 # Checks python version and also check version.md on github for latest pushed version. Lets user know of available updates.
-async def GetNewVersion(version_url,verbose):
+async def GetNewVersion(version_url):
     async with aiohttp.ClientSession() as session:
-        content = await ReadFile_async(session,version_url,verbose)
+        content = await ReadFile_async(session,version_url)
         return content
 
 # Asynchronously downloads a file
-async def StartFileDownload(filename,url,verbose):
+async def StartFileDownload(filename,url):
     async with aiohttp.ClientSession() as session:
-        await DownloadFile_async(session, filename,url,verbose)
+        await DownloadFile_async(session, filename,url)
 
 #           #
 #  PROMPTS  #
@@ -307,7 +303,7 @@ def SetupArgumentParser(): # Sets parameters/arguments getform.py takes
     parser.add_argument('-X', '--links_regex', type=str,  default='.+', 
                         help="Keep only links that match the regex you provide. \nWon't do anything if -x or -d arguments are not provided. \nDefaults to '.+'. Example usage: '-X \\.json$' would only give you files that have .json extension."
                         )
-    parser.add_argument('-D', '--download_links', nargs='?',  default=False, const=Path.cwd().joinpath(f'./download_{dt.now().strftime("%Y-%m-%d--%H-%M-%S%z")}'),
+    parser.add_argument('-D', '--download_links', nargs='?',  default=False, const=Path.cwd().joinpath(f'./download_{dt.now().strftime("%Y-%m-%d--%H-%M-%S")}'),
                         help="If you include this flag, all formsite links in the export will be downloaded to a folder. \nYou can specify location, for example `-D 'C:\\Users\\My Username\\Desktop\\downloads'` . \nIf you don't specify a location, it will default to the folder of the script."
                         )
     parser.add_argument('--sort', choices=['asc', 'desc'], type=str,  default="desc", 
@@ -335,36 +331,60 @@ def SetupArgumentParser(): # Sets parameters/arguments getform.py takes
                         help=
                         "You can use this flag to specify the timezone relative to which you want your results."
                         "\nThis is useful for when your organization is using a single formsite timezone for all subusers"
-                        "\nInput either string that describes your timezone such as UTC, CET, ART, GMT, MST, EST, etc. or an offset in the format +02:00"
+                        "\nInput either name of the timezone from this list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
+                        "\nThe timezone database method accounts for daylight savings time."
+                        "\nor an offset in the format +02:00 or +0200 or 0200 for a 2 hour later time (for example) from your LOCAL time"
                         "\n(there are many abbreviations for the same timezones, you can pick any abbreviation)"
-                        "\n Offset   Abbrev. Cities"
-                        "\n'-12:00' - IDLW - US minor outlying islands"
-                        "\n'-11:00' - SST  - American Samoa, New Zealand"
-                        "\n'-10:00' - HST  - Honolulu"
-                        "\n'-09:00' - HDT  - Anchorage"
-                        "\n'-08:00' - PST  - Los Angeles, Vancouver, Tijuana"
-                        "\n'-07:00' - MST  - Denver, Edmonton, Ciudad Juaréz"
-                        "\n'-06:00' - CST  - Mexico City, Chicago, San Salvador"
-                        "\n'-05:00' - EST  - New York, Toronto, Havana, Lima"
-                        "\n'-04:00' - CLT  - Santiago, La Paz, Halifax"
-                        "\n'-03:00' - ART  - São Paulo, Buenos Aires, Montevideo"
-                        "\n'-02:00' - BRST - Atlantic East Islands"
-                        "\n'-01:00' - CVT  - Cape Verde, Greenland"
-                        "\n'+00:00' - UTC  - London, Lisbon, Dakar"
-                        "\n'+01:00' - CET  - Berlin, Rome, Paris, Prague"
-                        "\n'+02:00' - EET  - Cairo, Kiev, Jerusalem, Athens, Sofia"
-                        "\n'+03:00' - EEST - Moscow, Istanbul, Baghdad, Addis Ababa"
-                        "\n'+04:00' - VOLT - Dubai, Tbilisi, Yerevan"
-                        "\n'+05:00' - YEKT - Karachi, Tashkent, Yekaterinburg"
-                        "\n'+06:00' - OMST - Dhaka, Almaty, Omsk"
-                        "\n'+07:00' - CXT  - Jakarta, Ho Chi Minh City, Bangkok, Krasnoyarsk"
-                        "\n'+08:00' - CST  - Shanghai, Taipei, Kuala Lumpur, Singapore, Perth, Manila, Makassar, Irkutsk"
-                        "\n'+09:00' - JST  - Tokyo, Seoul, Pyongyang, Ambon, Chita"
-                        "\n'+10:00' - AEST - Sydney, Port Moresby, Vladivostok"
-                        "\n'+11:00' - NFT  - Nouméa, Magadan"
-                        "\n'+12:00' - NZST - Auckland, Suva, Petropavlovsk-Kamchatsky"
+                        "\n Offset    Cities (this does not account for daylight savings time)"
+                        "\n'-12:00' - US minor outlying islands"
+                        "\n'-11:00' - American Samoa, New Zealand"
+                        "\n'-10:00' - Honolulu"
+                        "\n'-09:00' - Anchorage"
+                        "\n'-08:00' - Los Angeles, Vancouver, Tijuana"
+                        "\n'-07:00' - Denver, Edmonton, Ciudad Juaréz"
+                        "\n'-06:00' - Mexico City, Chicago, San Salvador"
+                        "\n'-05:00' - New York, Toronto, Havana, Lima"
+                        "\n'-04:00' - Santiago, La Paz, Halifax"
+                        "\n'-03:00' - São Paulo, Buenos Aires, Montevideo"
+                        "\n'-02:00' - Atlantic East Islands"
+                        "\n'-01:00' - Cape Verde, Greenland"
+                        "\n'+00:00' - London, Lisbon, Dakar"
+                        "\n'+01:00' - Berlin, Rome, Paris, Prague"
+                        "\n'+02:00' - Cairo, Kiev, Jerusalem, Athens, Sofia"
+                        "\n'+03:00' - Moscow, Istanbul, Baghdad, Addis Ababa"
+                        "\n'+04:00' - Dubai, Tbilisi, Yerevan"
+                        "\n'+05:00' - Karachi, Tashkent, Yekaterinburg"
+                        "\n'+06:00' - Dhaka, Almaty, Omsk"
+                        "\n'+07:00' - Jakarta, Ho Chi Minh City, Bangkok, Krasnoyarsk"
+                        "\n'+08:00' - China - Shanghai, Taipei, Kuala Lumpur, Singapore, Perth, Manila, Makassar, Irkutsk"
+                        "\n'+09:00' - Tokyo, Seoul, Pyongyang, Ambon, Chita"
+                        "\n'+10:00' - Sydney, Port Moresby, Vladivostok"
+                        "\n'+11:00' - Nouméa, Magadan"
+                        "\n'+12:00' - Auckland, Suva, Petropavlovsk-Kamchatsky"
+                        )
+    parser.add_argument('-F','--date_format',  default="%Y-%m-%d %H:%M:%S", 
+                        help="Specify a quoted string using python datetime directives to specify what format you want your dates in (column: Date)."
+                        "\nDefaults to '%Y-%m-%d %H:%M:%S' which is yyyy-mm-dd HH:MM:SS"
+                        "\nYou can find the possible format directives here: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior"
                         )
     return parser.parse_known_args()
+
+# Shifts input date by timezone offset, if you provided -T argument
+def ShiftParamterDate(date,timezone_offset):
+    try:
+        date = dt.strptime(date,"%Y-%m-%dT%H:%M:%SZ")
+    except: 
+        try:
+            date = dt.strptime(date,"%Y-%m-%d")
+        except:
+            try:
+                date = dt.strptime(date,"%Y-%m-%d %H:%M:%S")
+            except:
+                logging.log.critical('invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
+                quit()
+    date = date - timezone_offset
+    date = dt.strftime(date,"%Y-%m-%dT%H:%M:%SZ")
+    return date
 
 # Generates a dictionary of parameters for results API request
 def GenerateResultsHeader(args):
@@ -381,101 +401,123 @@ def GenerateResultsHeader(args):
     paramSearch_ends = ''
     paramSearch_method = ''
 
+    logging.log.info("getform.py started with the following arguments:")
     # Results header creation
     resultsParams = dict()
     resultsParams['limit'] = 500 # 500 = max allowed size
     if args.afterref != 0:
         resultsParams['after_id'] = args.afterref
-        print(f"afterref: {args.afterref}")
+        logging.log.info(f"afterref: {args.afterref}")
     if args.beforeref != 0:
         resultsParams['before_id'] = args.beforeref
-        print(f"beforeref: {args.beforeref}")
+        logging.log.info(f"beforeref: {args.beforeref}")
     if args.afterdate != "":
+        args.afterdate = ShiftParamterDate(args.afterdate,args.timezone)
         resultsParams['after_date'] = args.afterdate
-        print(f"afterdate: {args.afterdate}")
+        logging.log.info(f"afterdate: {args.afterdate}")
     if args.beforedate != "":
+        args.beforedate = ShiftParamterDate(args.beforedate,args.timezone)
         resultsParams['before_date'] = args.beforedate
-        print(f"beforedate: {args.beforedate}")
+        logging.log.info(f"beforedate: {args.beforedate}")
     resultsParams['sort_direction'] = args.sort
-    print(f"sort_direction: {args.sort}") if args.verbose == True else 0
+    logging.log.info(f"sort_direction: {args.sort}")
     resultsParams['results_view'] = 11 # 11 = all items + statistics
-    print(f"results_view: 11") if args.verbose == True else 0
+    logging.log.info(f"results_view: 11")
     if colID_sort != 0:
         resultsParams['sort_id'] = colID_sort
-        print(f"sort_id: {colID_sort}")
+        logging.log.info(f"sort_id: {colID_sort}")
     if colID_equals != 0 or paramSearch_equals != '':
         resultsParams[f'search_equals[{colID_equals}] ='] = paramSearch_equals
-        print(f"colID_equals: {colID_equals}")
+        logging.log.info(f"colID_equals: {colID_equals}")
     if colID_contains != 0 or paramSearch_contains != '':
         resultsParams[f'search_contains[{colID_contains}] ='] = paramSearch_contains
-        print(f"search_contains: {colID_contains}")
+        logging.log.info(f"search_contains: {colID_contains}")
     if colID_begins != 0 or paramSearch_begins != '':
         resultsParams[f'search_begins[{colID_begins}] ='] = paramSearch_begins
-        print(f"colID_begins: {colID_begins}")
+        logging.log.info(f"colID_begins: {colID_begins}")
     if colID_ends != 0 or paramSearch_ends != '':
         resultsParams[f'search_ends[{colID_ends}] ='] = paramSearch_ends
-        print(f"colID_ends: {colID_ends}")
+        logging.log.info(f"colID_ends: {colID_ends}")
     if paramSearch_method != '':
         resultsParams['search_method'] = paramSearch_method
-        print(f"search_method: {paramSearch_method}")
+        logging.log.info(f"search_method: {paramSearch_method}")
     return resultsParams
 
 # Generates a dictionary for API authorization purposes from username and token
 def GenerateAuthHeader(args):
     authHeader = {"Authorization": args.username+" " +
                   args.token, "Accept": "application/json"}
+    logging.log.debug(f'Authorization HTTP header generated')
     return authHeader
 
 # If -x argument is added, writes links into a file of specified location.
-def WriteLinks(link_array, filename,verbose):
-    print(f"Writing links into: {filename}") if verbose == True else 0
+def WriteLinks(link_array, filename):
+    logging.log.debug(f"Writing links into: {filename}")
     with open(filename,'w',encoding="utf-8") as links_file:
         for link in link_array:
             links_file.write(link+"\n")
 
 # A part of the async downloads file function. This async function downloads the file to memory.
-async def FetchFile_async(session,url,verbose):
-    print(f"DOWNLOADING: {url}") if verbose == True else 0
-    async with session.get(url) as response:
-        content = await response.read()
+async def FetchFile_async(session,url):
+    content = None
+    logging.log.debug(f"QUEUED DOWNLOAD: {url}")
+    try:
+        async with session.get(url) as reponse:
+            content = await reponse.read()
+        logging.log.debug(f"DOWNLOADED:      {url}")
+    except:
+        logging.log.warning(f"Error downloading {url}")
+    
     return content
 
 # This async function writes the file to storage.
-async def WriteFile_async(content, filename, verbose):
-    print(f"WRITING:     {filename}") if verbose == True else 0
+async def WriteFile_async(content, filename):
     with open(filename,'wb') as wf:
         wf.write(content)
+        logging.log.debug(f"WRITING:         {filename}")
 
 # This async function triggers the download and the writing of the file.
-async def DownloadFile_async(session,filename, url, verbose):
+async def DownloadFile_async(session,filename, url):
     try:
-        content = await FetchFile_async(session,url, verbose)
-        await WriteFile_async(content, filename, verbose)
+        content = await FetchFile_async(session,url)
+        await WriteFile_async(content, filename)
     except:
-        print(f"Error downloading/writing {filename}")
+        logging.log.warning(f"Error downloading/writing {filename}\n Trying again...")
+        DownloadFile_async(filename, url)
 
 # This async function downloads a file but doesn't write it, only returns its content
-async def ReadFile_async(session,url,verbose):
-    content = await FetchFile_async(session,url,verbose)
+async def ReadFile_async(session,url):
+    content = await FetchFile_async(session,url)
     return content.decode('utf-8')
 
 # This async function triggers the file download process for a list of links.
 async def FileDownloadLoop(links, files_url, args):
-    print(f"Starting download of {len(links)} files...")
+    logging.log.info(f"Starting download of {len(links)} files...\n")
     tasks = []
     t0 = time.perf_counter()
     try:
         os.mkdir(args.download_links)
-        print(f"Creating {args.download_links.as_posix()}") if args.verbose == True else 0
+        logging.log.debug(f"Creating {args.download_links.as_posix()}")
     except:
-        print(f"Directory {args.download_links.as_posix()} already exists.") if args.verbose == True else 0
-    async with aiohttp.ClientSession() as session:
-        for url in links:
-            filename = args.download_links.as_posix()+"/"+url.replace(files_url,'')
-            tasks.append(DownloadFile_async(session,filename,url,args.verbose))
-        await asyncio.gather(*tasks)
+        logging.log.debug(f"Directory {args.download_links.as_posix()} already exists.")
+    
+    results_list = []
+    max_batch = 50
+    num_batches = int(len(links)/50)+1
+    for batch in range(0,num_batches):
+        tasks = []
+        upper_bound=max_batch+batch*max_batch
+        lower_bound=batch*max_batch
+        if upper_bound >= len(links):
+            upper_bound=len(links)-1
+        async with aiohttp.ClientSession() as session:
+            for idx in range(lower_bound,upper_bound):
+                filename = args.download_links.as_posix()+"/"+links[idx].replace(files_url,'')
+                tasks.append(DownloadFile_async(session,filename,links[idx]))
+            await asyncio.gather(*tasks)
+
     t = time.perf_counter() - t0
-    print(f"{len(links)} files downloaded in in {t:0.2f} seconds\n")
+    logging.log.info(f"{len(links)} files downloaded in in {t:0.2f} seconds\n")
 
 # If -l argumant is added, will output a more readable version of the items.json of requested form
 def ListColumns(itemsResponseContent):
@@ -486,41 +528,43 @@ def ListColumns(itemsResponseContent):
         print(f"{itemsLoaded['items'][items_index]['id']}:   {itemsLoaded['items'][items_index]['label']}")
         items_index += 1
         continue
-    print('API request count: %d' % statistics.APIcount)
+    logging.log.info('API request count: %d' % statistics.APIcount)
 
 # Class that stores useful information
 class Stats:
     num_pages = '?'
     APIcount = 0
     lmAPI = 0
+    itemsCalled = 0
 
 #Convert Dates to datetime if inputed in UTC ISO 8601 format
-def FixDates(iso_date):
+def FixDates(old_date,timezone_offset):
     try:    
-        new_date = dt.strptime(iso_date,"%Y-%m-%dT%H:%M:%S"+"Z")
+        new_date = dt.strptime(old_date,"%Y-%m-%dT%H:%M:%S"+"Z")
+        new_date = new_date - timezone_offset
         return new_date
     except:
-        return iso_date
+        return old_date
 
 # This method handles the -o flag, writes either an excel, json or CSV file
-def WriteResults(args, dataframe, encoding, separator, line_terminator, quoting, date_format):
+def WriteResults(args, dataframe, encoding, separator, line_terminator, date_format,base_date):
     if args.output_file != False:
-        print("Writing final report...")
+        logging.log.info("Writing final report...\n")
         if arguments.output_file == Path.cwd().resolve():
-            output_file = "%s_export_%s.csv" % (dt.strftime(dt.now(),date_format),args.form) # "%Y-%m-%d %H-%M-%S"
+            output_file = "export_%s_%s.csv" % (args.form,dt.strftime(base_date,date_format))
         else:
             output_file = args.output_file.resolve().as_posix()
         if regex.search('.+\\.xlsx$', output_file) is not None:
-            dataframe.to_excel(output_file,index=False,encoding=encoding)
+            dataframe.to_excel(output_file,index=False,encoding=encoding,date_format=args.date_format)
         elif regex.search('.+\\.json$', output_file) is not None:
             dataframe.to_json(output_file, orient="records")
         else:
-            dataframe.to_csv(output_file,sep=separator,index=False,encoding=encoding,quoting=quoting,line_terminator=line_terminator)
+            dataframe.to_csv(output_file,sep=separator,index=False,encoding=encoding,line_terminator=line_terminator,date_format=args.date_format)
 
-        print('Export:    %s'  % output_file)
-        print('Rows:      %d ' % len(dataframe.index))
-        print('Cols:      %d ' % len(dataframe.columns))
-        print('Encoding:  %s'  % encoding)
+        logging.log.info('Export:    %s'  % output_file)
+        logging.log.info('Rows:      %d ' % len(dataframe.index))
+        logging.log.info('Cols:      %d ' % len(dataframe.columns))
+        logging.log.info('Encoding:  %s\n'  % encoding)
         
 # Removes quotes from a provided string, returns unquoted string
 def UnquoteString(argument,quotes):
@@ -531,7 +575,7 @@ def UnquoteString(argument,quotes):
 # Checks if data put into certain argparse arguments is correct
 def CheckGroupA(argument,argument_name,flag,example,quotes):
     if argument == None:
-        print(f"Missing {argument_name}. Please use the {flag} flag to enter your username. ex: {flag} {example}")
+        logging.log.critical(f"Missing {argument_name}. Please use the {flag} flag to enter your username. ex: {flag} {example}")
         quit()
     argument = UnquoteString(argument,quotes)
     return argument
@@ -564,7 +608,7 @@ def SanitizeArguments(args):
             if args.output_file.exists() == False:
                 args.output_file.parent.mkdir(exist_ok =True, parents = True)
                 args.output_file.touch()
-            print(f"Output file: {args.output_file}") if args.verbose else 0
+            logging.log.debug(f"Output file: {args.output_file}")
         
         if args.extract_links != False:
             args.extract_links = UnquoteString(args.extract_links,quotes_map)
@@ -572,14 +616,14 @@ def SanitizeArguments(args):
             if args.extract_links.exists() == False:
                 args.extract_links.parent.mkdir(exist_ok =True, parents = True)
                 args.extract_links.touch()
-            print(f"Links file: {args.extract_links}") if args.verbose else 0
+            logging.log.debug(f"Links file: {args.extract_links}")
         
         if args.download_links != False:
             args.download_links = UnquoteString(args.download_links,quotes_map)
             args.download_links = Path(args.download_links).resolve()
             if args.download_links.exists() == False:
                 Path.mkdir(args.download_links,parents=True,exist_ok=True)
-            print(f"Download directory: {args.download_links}") if args.verbose else 0
+            logging.log.debug(f"Download directory: {args.download_links}")
         
         #args.refresh_headers = bool(args.refresh_headers)
         #args.generate_results_files = bool(args.generate_results_files)
@@ -589,33 +633,67 @@ def SanitizeArguments(args):
         #args.no_items = bool(args.no_items)
     return args
 
-def ProcessTimezone(args):
-    relative_time = dt.now()
+class gLogger:                                                                     
+    def __init__(self, is_verbose=False):                                       
+        # configuring log                                                       
+        if (is_verbose):                                                        
+            self.log_level=logging.DEBUG   
+            log_format = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+        else:                                                                   
+            self.log_level=logging.INFO          
+            log_format = logging.Formatter('%(message)s')
 
+        self.log = logging.getLogger(__name__)                                  
+        self.log.setLevel(self.log_level)                                       
+        # writing to stdout                                                     
+        handler = logging.StreamHandler(sys.stdout)                             
+        handler.setLevel(self.log_level)                                        
+        handler.setFormatter(log_format)                                        
+        self.log.addHandler(handler)       
+        self.log.debug('Outputting logs in DEBUG mode.')                                     
 
+# Generates timezone offset as a timedelta of your local timezone and your input timezone
+def GetDesiredTimezoneOffset(args):
+    local_date = dt.now()
+    if args.timezone == 'local':
+        return td(seconds=0)  
 
-
-    return relative_time
-    pass
+    if regex.search('(\+|\-|)([01]?\d|2[0-3])([0-5]\d)',args.timezone) is not None:
+        inp = args.timezone.replace("'","")
+        inp = [inp[:2],inp[2:]] if len(inp)==4 else [inp[:3],inp[3:]]
+        offset_from_local = td(hours=int(inp[0]),seconds=int(inp[1])/60)
+    elif regex.search('(\+|\-|)([01]?\d|2[0-3]):([0-5]\d)',args.timezone) is not None:
+        inp = args.timezone.replace("'","")
+        inp = [inp[:2],inp[3:]] if len(inp)==5 else [inp[:3],inp[4:]]
+        offset_from_local = td(hours=int(inp[0]),seconds=int(inp[1])/60)
+    else:
+        inp = pytz.timezone(args.timezone).localize(local_date).strftime("%z")
+        inp = [inp[:2],inp[2:]] if len(inp)==4 else [inp[:3],inp[3:]]
+        offset_from_local = td(hours=int(inp[0]),seconds=int(inp[1])/60)
+    
+    logging.log.debug(f'Base date is:       {local_date.strftime("%Y-%m-%d %H:%M:%S")}')
+    logging.log.debug(f'Timezone offset is: {offset_from_local.total_seconds()} s')
+    return offset_from_local, local_date
 
 # Program
 if __name__ == '__main__':
-    
-
-    #inputs - Abbrev - GMT, CET
-    #       - offset - +05:00, -12:00
-
-    print("getform.py started with the following arguments:")
     # Generate loop for asynchornous code execution
     loop = asyncio.get_event_loop()
     # Set up arguments from CLI input and some other initial vars
     statistics = Stats()
-    arguments = SetupArgumentParser()[0]
-    arguments = SanitizeArguments(arguments)
+    arguments = SetupArgumentParser()[0] # 0th index is argparse arguments, other are arguments not recognized by argparser
     
+    # Configures logging.log options
+    logging = gLogger(arguments.verbose)
+
+    # Unquotes arguments, checks if they are parsed correctly
+    arguments = SanitizeArguments(arguments)
+
+    #If -T was used, calculates timedelta timezone offset
+    arguments.timezone, base_date = GetDesiredTimezoneOffset(arguments)
 
     # Checks for python version and program version
-    CheckVersion(arguments.version,loop,arguments.verbose)
+    CheckVersion(arguments.version,loop)
 
     # Generates initial variables from argparse arguments provided
     url_base=f"https://{arguments.server}.formsite.com/api/v2/{arguments.directory}"
@@ -625,8 +703,9 @@ if __name__ == '__main__':
     # Generates headers for parametrs for API results request, used in function below
     authHeader = GenerateAuthHeader(arguments)
     resultsParams = GenerateResultsHeader(arguments)
+
     itemsParams = {"results_labels":arguments.resultslabels}
-    print(f"results_labels: {arguments.resultslabels}") if arguments.verbose == True else 0
+    logging.log.info(f"results_labels: {arguments.resultslabels}")
 
     # Asynchronous API calls
     future = asyncio.ensure_future(performAPIrequests(url_forms,authHeader,itemsParams,resultsParams,arguments,statistics))
@@ -643,7 +722,7 @@ if __name__ == '__main__':
 
         # If there are no results in parameters specified, quit program.
     if len(results_LoadedObject[0]['results']) == 0:
-        print("There are no results in specified parameters.")
+        logging.log.critical("There are no results in specified parameters.")
         quit()
     
     # Create main dataframe with Results Responses Jsons
@@ -651,9 +730,9 @@ if __name__ == '__main__':
     ItemsDF = pd.DataFrame(SeparatePaginatedItems(results_LoadedObject),columns=CreateItemsHeaders(items_LoadedObject))
 
     # Convert date formats from ISO 8601 TO MM/DD/YYYY hh:mm:ss and sets other formats that usually get generated when exporting
-    HardCodedDF['date_update'] = HardCodedDF['date_update'].apply(lambda x: FixDates(x))
-    HardCodedDF['date_start'] = HardCodedDF['date_start'].apply(lambda x: FixDates(x))
-    HardCodedDF['date_finish'] = HardCodedDF['date_finish'].apply(lambda x: FixDates(x))
+    HardCodedDF['date_update'] = HardCodedDF['date_update'].apply(lambda x: FixDates(x,arguments.timezone))
+    HardCodedDF['date_start'] = HardCodedDF['date_start'].apply(lambda x: FixDates(x,arguments.timezone))
+    HardCodedDF['date_finish'] = HardCodedDF['date_finish'].apply(lambda x: FixDates(x,arguments.timezone))
     HardCodedDF['duration'] = HardCodedDF['date_finish'] - HardCodedDF['date_start']
     HardCodedDF['duration'] = HardCodedDF['duration'].apply(lambda x: x.total_seconds())
 
@@ -662,14 +741,14 @@ if __name__ == '__main__':
     FullDataframe = pd.concat([df_1, ItemsDF, df_2], axis=1)
 
     # Write EXCEL/JSON/CSV from constructed array
-    WriteResults(arguments, FullDataframe, 'utf-8', ',', '\n', csv.QUOTE_ALL, "%Y-%m-%d--%H-%M-%S%z")
+    WriteResults(arguments, FullDataframe, 'utf-8', ',', '\n', "%Y-%m-%d--%H-%M-%S%z",base_date)
     
     # Special case of option -x or -D
     if arguments.extract_links != False or arguments.download_links != False:
         temp_df = FullDataframe
         temp_df.columns = [n for n in range(0,len(temp_df.columns))]
         links = []
-        print("\nExtracting links from export...\n")
+        logging.log.info("Extracting links from export...")
         for col in temp_df.columns:
             txt = temp_df[col].to_list()
             try:
@@ -681,14 +760,14 @@ if __name__ == '__main__':
                 continue
         if arguments.extract_links != False:
             if arguments.extract_links == Path.cwd():
-                x_filename = f"links_{arguments.form}_{dt.now().strftime('%Y-%m-%d--%H-%M-%S%z')}.txt"
+                x_filename = f"links_{arguments.form}_{base_date.strftime('%Y-%m-%d--%H-%M-%S%z')}.txt"
             else:
                 x_filename = arguments.extract_links
-            WriteLinks(links,x_filename,arguments.verbose)
-            print(f"Formsite download links extracted:    {x_filename}")
+            WriteLinks(links,x_filename)
+            logging.log.info(f"Formsite download links extracted:    {x_filename}\n")
         if arguments.download_links != False:
             future = asyncio.ensure_future(FileDownloadLoop(links,url_files,arguments))
             loop.run_until_complete(future)
     # End
-    print('API calls: %d' % statistics.num_pages)
+    logging.log.info('API calls: %d' % (int(statistics.num_pages)+int(statistics.itemsCalled)))
     quit()
