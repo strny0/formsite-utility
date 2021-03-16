@@ -14,10 +14,13 @@ You can install the required packages with:
 
 The required packages are:
 ```
-aiohttp
 regex
 openpyxl
+aiohttp
+requests
 pandas
+pytz
+python_dateutil
 ```
 
 ## Usage
