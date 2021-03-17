@@ -425,13 +425,13 @@ def __check_new_version__(check_new):
     if not sys.version_info >= (3, 4): #Check version
        logging.log.critical("Your version of python is not compatible with this script.\nPlease upgrade to python 3.4 or newer.")
        quit()
-    current_version = "1.1.6"
+    current_version = "1.1.7"
     latest_version = ReadFile("https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md")
     if check_new is True:
         logging.log.info(f"Your script version: {current_version}\nLatest version:    {latest_version}")
         update = input("Do you want to update to the latest version? (y/n)\n\n")
         if update.lower() == "y":
-            DownloadFile(("https://raw.githubusercontent.com/strny0/formsite-utility/main/getform.py",f"getform-{latest_version}.py",))
+            DownloadFile(("https://raw.githubusercontent.com/strny0/formsite-utility/main/getform.py",f"getform-{latest_version}.py",1))
             logging.log.warning("Update complete, please run the new file instead.")
         quit()
     if current_version != latest_version:
