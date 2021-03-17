@@ -23,8 +23,8 @@ import json #s
 import csv #s
 import argparse #s
 import logging #s
-from urllib import request as urlrequest
 import concurrent.futures
+import requests
 
 import pytz
 import dateutil as du #1
@@ -101,16 +101,19 @@ def __setup_arguments__():
                         help="Keep only links that match the regex you provide. \nWon't do anything if -x or -d arguments are not provided. \nDefaults to '.+'. Example usage: '-X \\.json$' would only give you files that have .json extension."
                         )
     parser.add_argument('-D', '--download_links', nargs='?',  default=False, const=Path.cwd().joinpath(f'./download_{dt.now().strftime("%Y-%m-%d--%H-%M-%S")}'),
-                        help="If you include this flag, all formsite links in the export will be downloaded to a folder. \nYou can specify location, for example `-D 'C:\\Users\\My Username\\Desktop\\downloads'` . \nIf you don't specify a location, it will default to the folder of the script."
+                        help="If you include this flag, all formsite links in the export will be downloaded to a folder."
+                        "\nYou can specify location, for example `-D 'C:\\Users\\My Username\\Desktop\\downloads'` ."
+                        "\nIf you don't specify a location, it will default to the folder of the script."
                         )
     parser.add_argument('--sort', choices=['asc', 'desc'], type=str,  default="desc", 
                         help="Determines how the output CSV will be sorted. Defaults to descending."
                         )
     parser.add_argument('-l', '--list_columns', action="store_true",  default=False, 
-                        help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, \nuseful for figuring out search arguments.\n"
+                        help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments."
                         )
     parser.add_argument('-g', '--generate_results_files', action="store_true",  default=False, 
-                        help="If you use this flag, program will output raw results in json format from API requests. \nUseful for debugging purposes."
+                        help="If you use this flag, program will output raw results in json format from API requests."
+                        "\nUseful for debugging purposes."
                         )
     parser.add_argument('-V', '--version', action="store_true",  default=False, 
                         help="Returns version of the script."
@@ -138,7 +141,7 @@ def __setup_arguments__():
                         "\n'-10:00' - Honolulu"
                         "\n'-09:00' - Anchorage"
                         "\n'-08:00' - Los Angeles, Vancouver, Tijuana"
-                        "\n'-07:00' - Denver, Edmonton, Ciudad Juaréz"
+                        "\n'-07:00' - Denver, Edmonton, Ciudad Juarez"
                         "\n'-06:00' - Mexico City, Chicago, San Salvador"
                         "\n'-05:00' - New York, Toronto, Havana, Lima"
                         "\n'-04:00' - Santiago, La Paz, Halifax"
@@ -156,13 +159,18 @@ def __setup_arguments__():
                         "\n'+08:00' - China - Shanghai, Taipei, Kuala Lumpur, Singapore, Perth, Manila, Makassar, Irkutsk"
                         "\n'+09:00' - Tokyo, Seoul, Pyongyang, Ambon, Chita"
                         "\n'+10:00' - Sydney, Port Moresby, Vladivostok"
-                        "\n'+11:00' - Nouméa, Magadan"
+                        "\n'+11:00' - Noumea, Magadan"
                         "\n'+12:00' - Auckland, Suva, Petropavlovsk-Kamchatsky"
                         )
     parser.add_argument('-F','--date_format',  default="%Y-%m-%d %H:%M:%S", 
                         help="Specify a quoted string using python datetime directives to specify what format you want your dates in (column: Date)."
-                        "\nDefaults to '%Y-%m-%d %H:%M:%S' which is yyyy-mm-dd HH:MM:SS"
+                        "\nDefaults to '%%Y-%%m-%%d %%H:%%M:%%S' which is yyyy-mm-dd HH:MM:SS"
                         "\nYou can find the possible format directives here: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior"
+                        )
+    parser.add_argument('--download_type',  default="reliable", choices=['reliable,volume'],
+                        help="You can specify --download_type volume to speed downloads of many small files up."
+                        "\nChanging this setting to volume will allow nearly unlimited concurrent downloads at once, speeding up downloads of many small files."
+                        "\nUsing 'reliable' limits it to 10 concurrent downloads, lowering chances of download timeout. Used with downloads of large files."
                         )
     return parser.parse_known_args()
 
@@ -529,29 +537,46 @@ def DownloadFormsiteLinks(links, files_url, args):
     except:
         logging.log.debug(f"Directory {args.download_links.as_posix()} already exists.")
     
-    arg_list = [(i,args.download_links.as_posix()+"/"+i.replace(files_url,"")) for i in links]
+    arg_list = [(i,args.download_links.as_posix()+"/"+i.replace(files_url,""),1) for i in links]
+    if args.download_type == "volume":
+        MAX_WORKERS = int(len(links))
+    else:
+        MAX_WORKERS = 10
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(DownloadFile,arg_list)
 
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        r = executor.map(DownloadFile,arg_list)
     t = time.perf_counter() - t0
     logging.log.info(f"{len(links)} files downloaded in in {t:0.2f} seconds\n")
     
 # This function writes the file to storage.
-def WriteFile(content, filename):
-    with open(filename,'wb') as wf:
-        wf.write(content)
+def WriteFile(content, filename, attempt=1,attempts=10):
+    try:
         logging.log.debug(f"WRITING:         {filename}")
+        with open(filename,'wb') as wf:
+            wf.write(content)
+    except:
+        logging.log.critical(f"({attempt}/{attempts}) Error writing file {filename}    Trying again...")
+        attempt += 1
+        if attempt >= attempts:
+            logging.log.critical(f"Failed to write {filename} after {attempt} attempts...")
+            exit()
+        else:
+            WriteFile(content, filename, attempt)
 
 # This function triggers the download and the writing of the file.
-def DownloadFile(arg):
+def DownloadFile(arg,attempts=10):
     try:
         content = FetchFile(arg[0])
-        WriteFile(content, arg[1])
-        s='success'
+        WriteFile(content, arg[1],arg[2])
     except:
-        logging.log.warning(f"Error downloading/writing {arg[1]}\n Trying again...")
-        s='failed'
-    return (arg[0],s)
+        logging.log.critical(f"({arg[2]}/{attempts}) Error downloading file {arg[0]}    Trying again...")
+        attempt = arg[2]+1
+        arg = (arg[0],arg[1],attempt)
+        if attempt >= attempts:
+            logging.log.critical(f"Failed to download {arg[0]} after {attempt} attempts...")
+            exit()
+        else:
+            DownloadFile(arg)
 
 # This function downloads a file but doesn't write it, only returns its content
 def ReadFile(url):
@@ -559,19 +584,25 @@ def ReadFile(url):
         content = FetchFile(url)
         return content.decode('utf-8')
     except:
-        logging.log.critical(f"Could not read: {url}")
+        logging.log.info(f"Could not read: {url}")
+        return None
   
 # A part of the downloads file function. This async function downloads the file to memory.
-def FetchFile(url):
-    content = None
+def FetchFile(url, attempt=1,attempts=10):
     logging.log.debug(f"QUEUED DOWNLOAD: {url}")
     try:
-        with urlrequest.urlopen(url) as response:
-            content = response.read()
+        with requests.get(url) as response:
+            content = response.content
         logging.log.debug(f"DOWNLOADED:      {url}")
+        return content
     except:
-        logging.log.warning(f"Error downloading {url}")
-    return content
+        logging.log.debug(f"({attempt}/{attempts}) Error downloading {url}")
+        attempt += 1
+        if attempt >= attempts:
+            logging.log.critical(f"Failed to download {url} after {attempt} attempts...")
+            exit()
+        else:
+            FetchFile(url, attempt=attempt)
 
 # If -l argumant is added, will output a more readable version of the items.json of requested form
 def ListColumns(itemsResponseContent):
@@ -718,7 +749,7 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop() # if i close this i get an error, idk...
     future = asyncio.ensure_future(__api_StartProcessing__(url_forms,authHeader,itemsParams,resultsParams,arguments,statistics))
     resultsContent_List,itemsContent = loop.run_until_complete(future)
-
+    #resultsContent_List,itemsContent = asyncio.run(__api_StartProcessing__(url_forms,authHeader,itemsParams,resultsParams,arguments,statistics))
     # This code will get executed if you provide the -l argument
     if arguments.list_columns is True:
         ListColumns(itemsContent)

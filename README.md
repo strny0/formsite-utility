@@ -21,6 +21,7 @@ requests
 pandas
 pytz
 python_dateutil
+requests
 ```
 
 ## Usage
