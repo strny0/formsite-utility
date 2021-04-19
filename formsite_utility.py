@@ -10,7 +10,6 @@ from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
 from pathlib import Path as Path  # s
 import json  # s
-#import logging  # s
 import concurrent.futures
 from multiprocessing import cpu_count
 from aiohttp.typedefs import PathLike
@@ -25,7 +24,6 @@ import aiofiles
 import pandas as pd  # !
 import openpyxl  # !
 import argparse  # !
-
 
 class FormsiteParams:
 
@@ -68,43 +66,30 @@ class FormsiteParams:
         resultsParams['limit'] = single_page_limit
         if self.afterref != 0:
             resultsParams['after_id'] = self.afterref
-            #logging.info(f"afterref: {self.afterref}")
         if self.beforeref != 0:
             resultsParams['before_id'] = self.beforeref
-            #logging.info(f"beforeref: {self.beforeref}")
         if self.afterdate != "":
             self.afterdate = self.__shift_param_date__(
                 self.afterdate, self.timezone_offset)
             resultsParams['after_date'] = self.afterdate
-            #logging.info(f"afterdate: {self.afterdate}")
         if self.beforedate != "":
             self.beforedate = self.__shift_param_date__(
                 self.beforedate, self.timezone_offset)
             resultsParams['before_date'] = self.beforedate
-            #logging.info(f"beforedate: {self.beforedate}")
-        #resultsParams['sort_direction'] = self.sort
-        #logging.info(f"sort_direction: {self.sort}")
         # 11 = all items + statistics
         resultsParams['results_view'] = self.resultsview
-        #logging.info(f"results_view: {self.resultsview}")
         if self.colID_sort != 0:
             resultsParams['sort_id'] = self.colID_sort
-            #logging.info(f"sort_id: {self.colID_sort}")
         if self.colID_equals != 0 or self.paramSearch_equals != '':
             resultsParams[f'search_equals[{self.colID_equals}] ='] = self.paramSearch_equals
-            #logging.info(f"colID_equals: {self.colID_equals}")
         if self.colID_contains != 0 or self.paramSearch_contains != '':
             resultsParams[f'search_contains[{self.colID_contains}] ='] = self.paramSearch_contains
-            #logging.info(f"search_contains: {self.colID_contains}")
         if self.colID_begins != 0 or self.paramSearch_begins != '':
             resultsParams[f'search_begins[{self.colID_begins}] ='] = self.paramSearch_begins
-            #logging.info(f"colID_begins: {self.colID_begins}")
         if self.colID_ends != 0 or self.paramSearch_ends != '':
             resultsParams[f'search_ends[{self.colID_ends}] ='] = self.paramSearch_ends
-            #logging.info(f"colID_ends: {self.colID_ends}")
         if self.paramSearch_method != '':
             resultsParams['search_method'] = self.paramSearch_method
-            #logging.info(f"search_method: {self.paramSearch_method}")
         return resultsParams
 
     def __shift_param_date__(self, date, timezone_offset) -> str:
@@ -123,8 +108,6 @@ class FormsiteParams:
                         date = dt.strptime(date, "%Y-%m-%d %H:%M:%S")
                         date = date - timezone_offset
                     except:
-                        #logging.critical(
-                        #    'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
                         raise Exception(
                             'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
         date = dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
@@ -150,24 +133,16 @@ class FormsiteParams:
                 offset_from_local = td(
                     hours=int(inp[0]), seconds=int(inp[1])/60)
             except:
-                #logging.critical("Invalid timezone format provided")
                 raise Exception("Invalid timezone format provided")
         elif timezone == 'local':
             offset_from_local = td(seconds=0)
         else:
-            #logging.critical("Invalid timezone format provided")
             raise Exception("Invalid timezone format provided")
 
-        #logging.info(
-        #    f'Starting formsite extraction on: {local_date.strftime("%Y-%m-%d %H:%M:%S")}')
-        #logging.info(
-        #    f'Timezone offset (from local timezone) is: {offset_from_local.total_seconds()/60/60} hours')
         return offset_from_local, local_date
 
     def getItemsHeader(self) -> dict:
-        #logging.info(f"results_labels: {self.resultslabels}")
         return {"results_labels": self.resultslabels}
-
 
 class FormsiteCredentials:
     def __init__(self, username: str, api_token: str, fs_server: str, fs_directory: str):
@@ -208,7 +183,6 @@ class FormsiteCredentials:
             argument = str(argument).replace(k, v)
         return argument
 
-
 class FormsiteInterface:
 
     def __init__(self, form_id: str, login: FormsiteCredentials, formsite_params=FormsiteParams(), verbose=False):
@@ -223,8 +197,6 @@ class FormsiteInterface:
         self.itemsHeader = self.params.getItemsHeader()
         self.Data = None
         self.Links = None
-        if verbose:
-            pass
 
     def _validate_path(self, path: PathLike, is_folder=False) -> PathLike:
         """Parses input path to posix format. Creates parent directories if they dont exist."""
@@ -280,7 +252,9 @@ class FormsiteInterface:
                 for item in txt:
                     if item.startswith(self.url_files) == True:
                         if regex.search(links_regex, item) is not None:
-                            self.Links.add(item)
+                            for link in item.split(' | '):
+                                if link != '':
+                                    self.Links.add(link)                  
             except:
                 continue
 
@@ -309,22 +283,29 @@ class FormsiteInterface:
     def ReturnLinks(self, links_regex='.+') -> set():
         """Returns a set of links of files saved on formsite servers, that were submitted to the specified form."""
         if self.Links is None:
-            self.ExtractLinks(links_regex)
+            self.ExtractLinks(links_regex=links_regex)
+            self.ReturnLinks(links_regex=links_regex)
+            return
+        
         return self.Links
 
     def WriteLinks(self, destination_path: PathLike, links_regex='.+'):
         """Writes links extracted with `self.ExtractLinks()` to a text file"""
         if self.Links is None:
             self.ExtractLinks(links_regex=links_regex)
+            self.WriteLinks(destination_path, links_regex=links_regex)
+            return
         output_file = self._validate_path(destination_path)
         with open(output_file, 'w') as writer:
             for link in self.Links:
                 writer.write(link+"\n")
 
-    def DownloadFiles(self, download_folder: PathLike, max_concurrent_downloads=10) -> None:
+    def DownloadFiles(self, download_folder: PathLike, max_concurrent_downloads=10, links_regex='.+') -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
         if self.Links is None:
-            self.ExtractLinks()
+            self.ExtractLinks(links_regex=links_regex)
+            self.DownloadFiles(download_folder, max_concurrent_downloads=max_concurrent_downloads, links_regex=links_regex)
+            return
 
         download_folder = self._validate_path(download_folder, is_folder=True)
         download_handler = _FormsiteDownloader(
@@ -348,20 +329,22 @@ class FormsiteInterface:
     def WriteResults(self, destination_path: PathLike, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
         if self.Data is None:
             self.FetchResults()
+            self.WriteResults(destination_path, encoding=encoding, date_format=date_format)
+            return
 
         output_file = self._validate_path(destination_path)
 
         if regex.search('.+\\.xlsx$', output_file) is not None:
-            #logging.info(f"Writing to an excel file: '{destination_path}'")
             self.Data.to_excel(output_file, index=False, encoding=encoding)
         else:
-            #logging.info(f"Writing to a csv file: '{destination_path}'")
             self.Data.to_csv(output_file, index=False,
                              encoding=encoding, date_format=date_format, line_terminator="\n", sep=',')
 
     def WriteLatestRef(self, destination_path: PathLike):
         if self.Data is None:
             self.FetchResults()
+            self.WriteLatestRef(destination_path)
+            return
 
         output_file = self._validate_path(destination_path)
         latest_ref = max(self.Data['Reference #'])
@@ -396,7 +379,6 @@ class _FormsiteAPI:
                 self.pbar.desc = "Fetching items"
                 self.items = await self.fetch_items()
                 self.pbar.desc = "API calls complete"
-            #logging.info(f"{self.total_pages+1} API calls complete")
         return self.items, self.results
 
     async def fetch_results(self, page) -> str:
@@ -436,7 +418,6 @@ class _FormsiteAPI:
         self.pbar.update(1)
         return content.decode('utf-8')
 
-
 class _FormsiteProcessing:
     def __init__(self, items: str, results: list, interface: FormsiteInterface, sort_asc=False):
         self.items_json = json.loads(items)
@@ -450,7 +431,11 @@ class _FormsiteProcessing:
 
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
-        assert len(self.results_jsons[0]['results']) != 0
+        try:
+            assert len(self.results_jsons[0]['results']) != 0
+        except AssertionError:
+            print("No results to process.")
+            return None
         splits = self._divide(self.results_jsons, cpu_count())
         pbar = tqdm(total=len(splits)+4, desc='Processing results',
                     leave=False)
@@ -562,7 +547,6 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
 
-
 class _FormsiteDownloader:
     def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int):
         self.download_folder = download_folder
@@ -598,7 +582,6 @@ class _FormsiteDownloader:
             filename = f"{self.download_folder}/{url.split('/')[len(url.split('/'))-1]}"
             await self._write(content, filename)
             self.pbar.update(1)
-
 
 def GatherArguments():
     parser = argparse.ArgumentParser(
@@ -744,7 +727,6 @@ def GatherArguments():
                          )
     return parser.parse_known_args()[0]
 
-
 if __name__ == '__main__':
     arguments = GatherArguments()
     parameters = FormsiteParams(
@@ -764,7 +746,7 @@ if __name__ == '__main__':
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.1"
+        current_version = "1.2.2"
 
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
@@ -777,7 +759,6 @@ if __name__ == '__main__':
                 print('https://github.com/strny0/formsite-utility')
         asyncio.get_event_loop().run_until_complete(checkver())
         quit()
-
     if arguments.list_forms is not False:
         if arguments.list_forms == 'default':
             interface.ListAllForms(display2console=True)
@@ -785,7 +766,6 @@ if __name__ == '__main__':
             interface.ListAllForms(display2console=True,
                                    save2csv=arguments.list_forms)
         quit()
-
     if arguments.list_columns is not False:
         interface.ListColumns()
         quit()
@@ -812,7 +792,7 @@ if __name__ == '__main__':
         if arguments.download_links == 'default':
             default_folder = f'./download_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}'
             interface.DownloadFiles(
-                default_folder, max_concurrent_downloads=arguments.concurrent_downloads)
+                default_folder, max_concurrent_downloads=arguments.concurrent_downloads, links_regex=arguments.links_regex)
         else:
             interface.DownloadFiles(
                 arguments.download_links, max_concurrent_downloads=arguments.concurrent_downloads)
