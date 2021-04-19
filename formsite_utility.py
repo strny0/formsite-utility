@@ -124,7 +124,7 @@ class FormsiteParams:
                         date = date - timezone_offset
                     except:
                         #logging.critical(
-                            'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
+                        #    'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
                         raise Exception(
                             'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
         date = dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
@@ -159,9 +159,9 @@ class FormsiteParams:
             raise Exception("Invalid timezone format provided")
 
         #logging.info(
-            f'Starting formsite extraction on: {local_date.strftime("%Y-%m-%d %H:%M:%S")}')
+        #    f'Starting formsite extraction on: {local_date.strftime("%Y-%m-%d %H:%M:%S")}')
         #logging.info(
-            f'Timezone offset (from local timezone) is: {offset_from_local.total_seconds()/60/60} hours')
+        #    f'Timezone offset (from local timezone) is: {offset_from_local.total_seconds()/60/60} hours')
         return offset_from_local, local_date
 
     def getItemsHeader(self) -> dict:
