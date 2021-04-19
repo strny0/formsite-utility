@@ -10,12 +10,13 @@ from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
 from pathlib import Path as Path  # s
 import json  # s
-import logging  # s
+#import logging  # s
 import concurrent.futures
 from multiprocessing import cpu_count
 from aiohttp.typedefs import PathLike
 
 from tqdm.asyncio import tqdm  # !
+import sys
 import pytz  # !
 import regex  # !
 import asyncio  # !
@@ -24,6 +25,7 @@ import aiofiles
 import pandas as pd  # !
 import openpyxl  # !
 import argparse  # !
+
 
 class FormsiteParams:
 
@@ -66,43 +68,43 @@ class FormsiteParams:
         resultsParams['limit'] = single_page_limit
         if self.afterref != 0:
             resultsParams['after_id'] = self.afterref
-            logging.info(f"afterref: {self.afterref}")
+            #logging.info(f"afterref: {self.afterref}")
         if self.beforeref != 0:
             resultsParams['before_id'] = self.beforeref
-            logging.info(f"beforeref: {self.beforeref}")
+            #logging.info(f"beforeref: {self.beforeref}")
         if self.afterdate != "":
             self.afterdate = self.__shift_param_date__(
                 self.afterdate, self.timezone_offset)
             resultsParams['after_date'] = self.afterdate
-            logging.info(f"afterdate: {self.afterdate}")
+            #logging.info(f"afterdate: {self.afterdate}")
         if self.beforedate != "":
             self.beforedate = self.__shift_param_date__(
                 self.beforedate, self.timezone_offset)
             resultsParams['before_date'] = self.beforedate
-            logging.info(f"beforedate: {self.beforedate}")
+            #logging.info(f"beforedate: {self.beforedate}")
         #resultsParams['sort_direction'] = self.sort
-        logging.info(f"sort_direction: {self.sort}")
+        #logging.info(f"sort_direction: {self.sort}")
         # 11 = all items + statistics
         resultsParams['results_view'] = self.resultsview
-        logging.info(f"results_view: {self.resultsview}")
+        #logging.info(f"results_view: {self.resultsview}")
         if self.colID_sort != 0:
             resultsParams['sort_id'] = self.colID_sort
-            logging.info(f"sort_id: {self.colID_sort}")
+            #logging.info(f"sort_id: {self.colID_sort}")
         if self.colID_equals != 0 or self.paramSearch_equals != '':
             resultsParams[f'search_equals[{self.colID_equals}] ='] = self.paramSearch_equals
-            logging.info(f"colID_equals: {self.colID_equals}")
+            #logging.info(f"colID_equals: {self.colID_equals}")
         if self.colID_contains != 0 or self.paramSearch_contains != '':
             resultsParams[f'search_contains[{self.colID_contains}] ='] = self.paramSearch_contains
-            logging.info(f"search_contains: {self.colID_contains}")
+            #logging.info(f"search_contains: {self.colID_contains}")
         if self.colID_begins != 0 or self.paramSearch_begins != '':
             resultsParams[f'search_begins[{self.colID_begins}] ='] = self.paramSearch_begins
-            logging.info(f"colID_begins: {self.colID_begins}")
+            #logging.info(f"colID_begins: {self.colID_begins}")
         if self.colID_ends != 0 or self.paramSearch_ends != '':
             resultsParams[f'search_ends[{self.colID_ends}] ='] = self.paramSearch_ends
-            logging.info(f"colID_ends: {self.colID_ends}")
+            #logging.info(f"colID_ends: {self.colID_ends}")
         if self.paramSearch_method != '':
             resultsParams['search_method'] = self.paramSearch_method
-            logging.info(f"search_method: {self.paramSearch_method}")
+            #logging.info(f"search_method: {self.paramSearch_method}")
         return resultsParams
 
     def __shift_param_date__(self, date, timezone_offset) -> str:
@@ -121,7 +123,7 @@ class FormsiteParams:
                         date = dt.strptime(date, "%Y-%m-%d %H:%M:%S")
                         date = date - timezone_offset
                     except:
-                        logging.critical(
+                        #logging.critical(
                             'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
                         raise Exception(
                             'invalid date format input for afterdate/beforedate, please use ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
@@ -148,23 +150,24 @@ class FormsiteParams:
                 offset_from_local = td(
                     hours=int(inp[0]), seconds=int(inp[1])/60)
             except:
-                logging.critical("Invalid timezone format provided")
+                #logging.critical("Invalid timezone format provided")
                 raise Exception("Invalid timezone format provided")
         elif timezone == 'local':
             offset_from_local = td(seconds=0)
         else:
-            logging.critical("Invalid timezone format provided")
+            #logging.critical("Invalid timezone format provided")
             raise Exception("Invalid timezone format provided")
 
-        logging.info(
+        #logging.info(
             f'Starting formsite extraction on: {local_date.strftime("%Y-%m-%d %H:%M:%S")}')
-        logging.info(
+        #logging.info(
             f'Timezone offset (from local timezone) is: {offset_from_local.total_seconds()/60/60} hours')
         return offset_from_local, local_date
 
     def getItemsHeader(self) -> dict:
-        logging.info(f"results_labels: {self.resultslabels}")
+        #logging.info(f"results_labels: {self.resultslabels}")
         return {"results_labels": self.resultslabels}
+
 
 class FormsiteCredentials:
     def __init__(self, username: str, api_token: str, fs_server: str, fs_directory: str):
@@ -205,6 +208,7 @@ class FormsiteCredentials:
             argument = str(argument).replace(k, v)
         return argument
 
+
 class FormsiteInterface:
 
     def __init__(self, form_id: str, login: FormsiteCredentials, formsite_params=FormsiteParams(), verbose=False):
@@ -219,6 +223,8 @@ class FormsiteInterface:
         self.itemsHeader = self.params.getItemsHeader()
         self.Data = None
         self.Links = None
+        if verbose:
+            pass
 
     def _validate_path(self, path: PathLike, is_folder=False) -> PathLike:
         """Parses input path to posix format. Creates parent directories if they dont exist."""
@@ -338,7 +344,7 @@ class FormsiteInterface:
         print(f"Results labels: {arguments.resultslabels}")
         print(f"Results view: {arguments.resultsview}")
         print(items)
-        
+
     def WriteResults(self, destination_path: PathLike, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
         if self.Data is None:
             self.FetchResults()
@@ -346,12 +352,12 @@ class FormsiteInterface:
         output_file = self._validate_path(destination_path)
 
         if regex.search('.+\\.xlsx$', output_file) is not None:
-            logging.info(f"Writing to an excel file: '{destination_path}'")
+            #logging.info(f"Writing to an excel file: '{destination_path}'")
             self.Data.to_excel(output_file, index=False, encoding=encoding)
         else:
-            logging.info(f"Writing to a csv file: '{destination_path}'")
+            #logging.info(f"Writing to a csv file: '{destination_path}'")
             self.Data.to_csv(output_file, index=False,
-                             encoding=encoding, date_format=date_format)
+                             encoding=encoding, date_format=date_format, line_terminator="\n", sep=',')
 
     def WriteLatestRef(self, destination_path: PathLike):
         if self.Data is None:
@@ -363,7 +369,7 @@ class FormsiteInterface:
             writer.write(latest_ref)
 
 class _FormsiteAPI:
-    def __init__(self, interface: FormsiteInterface, save_results_jsons=False, save_items_json=False, refresh_items_json=False, display_progress=True):
+    def __init__(self, interface: FormsiteInterface, save_results_jsons=False, save_items_json=False, refresh_items_json=False):
         self.paramsHeader = interface.paramsHeader
         self.itemsHeader = interface.itemsHeader
         self.authHeader = interface.authHeader
@@ -375,12 +381,11 @@ class _FormsiteAPI:
         self.save_items_json = save_items_json
         self.refresh_items_json = refresh_items_json
         self.check_pages = True
-        self.display_progress = display_progress
 
     async def Start(self):
         """Performs all API calls to formsite servers asynchronously"""
         async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None)) as self.session:
-            with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=self.display_progress) as self.pbar:
+            with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=False) as self.pbar:
                 self.pbar.desc = "Fetching results"
                 self.results = [await self.fetch_results(1)]
                 if self.total_pages > 1:
@@ -391,6 +396,7 @@ class _FormsiteAPI:
                 self.pbar.desc = "Fetching items"
                 self.items = await self.fetch_items()
                 self.pbar.desc = "API calls complete"
+            #logging.info(f"{self.total_pages+1} API calls complete")
         return self.items, self.results
 
     async def fetch_results(self, page) -> str:
@@ -430,12 +436,12 @@ class _FormsiteAPI:
         self.pbar.update(1)
         return content.decode('utf-8')
 
+
 class _FormsiteProcessing:
-    def __init__(self, items: str, results: list, interface: FormsiteInterface, display_progress=True, sort_asc=False):
+    def __init__(self, items: str, results: list, interface: FormsiteInterface, sort_asc=False):
         self.items_json = json.loads(items)
         self.results_jsons = [json.loads(results_page)
                               for results_page in results]
-        self.display_progress = display_progress
         self.timezone_offset = interface.params.timezone_offset
         ih = pd.DataFrame(self.items_json['items'])['label']
         ih.name = None
@@ -445,31 +451,27 @@ class _FormsiteProcessing:
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
         assert len(self.results_jsons[0]['results']) != 0
-        pbar = tqdm(total=cpu_count()+4, desc='Processing results',
-                    leave=self.display_progress)
+        splits = self._divide(self.results_jsons, cpu_count())
+        pbar = tqdm(total=len(splits)+4, desc='Processing results',
+                    leave=False)
 
         def _update_pbar(f):
             pbar.update(1)
             return f
 
-        def divide(lst, n):
-            p = len(lst) // n
-            if len(lst)-p > 0:
-                return [lst[:p]] + divide(lst[p:], n-1)
-            else:
-                return [lst]
-
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = []
-            for split in divide(self.results_jsons, cpu_count()):
-                future = executor.submit(self._process_many, split)
-                future.add_done_callback(_update_pbar)
-                futures.append(future)
+            for split in splits:
+                if split != []:
+                    future = executor.submit(self._process_many, split)
+                    future.add_done_callback(_update_pbar)
+                    futures.append(future)
             concurrent.futures.wait(futures)
             pbar.update(1)
             dataframe_list = []
             for future in futures:
                 dataframe_list.append(future.result())
+
         pbar.desc = "Combining results"
         pbar.update(1)
         final_dataframe = pd.concat(dataframe_list)
@@ -480,6 +482,15 @@ class _FormsiteProcessing:
         pbar.desc = "Results processed"
         pbar.update(1)
         return final_dataframe
+
+    def _divide(self, lst, n):
+        p = len(lst) // n
+        if p == 0:
+            return self._divide(lst[p:], n-1)
+        elif len(lst)-p > 0:
+            return [lst[:p]] + self._divide(lst[p:], n-1)
+        else:
+            return [lst]
 
     def _process_many(self, results_jsons_split: list):
         dataframes = []
@@ -551,17 +562,17 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
 
+
 class _FormsiteDownloader:
-    def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int, display_progress=True):
+    def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int):
         self.download_folder = download_folder
         self.links = links
         self.semaphore = asyncio.Semaphore(max_concurrent_downloads)
-        self.display_progress = display_progress
 
     async def Start(self):
         """Starts download of links."""
         async with ClientSession(connector=TCPConnector(limit=None)) as session:
-            with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=self.display_progress) as self.pbar:
+            with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=False) as self.pbar:
                 tasks = []
                 for link in self.links:
                     task = asyncio.create_task(self._download(link, session))
@@ -587,6 +598,7 @@ class _FormsiteDownloader:
             filename = f"{self.download_folder}/{url.split('/')[len(url.split('/'))-1]}"
             await self._write(content, filename)
             self.pbar.update(1)
+
 
 def GatherArguments():
     parser = argparse.ArgumentParser(
@@ -732,6 +744,7 @@ def GatherArguments():
                          )
     return parser.parse_known_args()[0]
 
+
 if __name__ == '__main__':
     arguments = GatherArguments()
     parameters = FormsiteParams(
@@ -751,7 +764,8 @@ if __name__ == '__main__':
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.0"
+        current_version = "1.2.1"
+
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
                 content = await r.content.read()

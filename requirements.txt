@@ -6,5 +6,4 @@ pandas
 python_dateutil
 pytz
 regex
-requests
 tqdm
