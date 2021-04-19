@@ -1,10 +1,10 @@
 # Formsite Utility
 
-## A CLI API-based tool.
+## A CLI API-based tool
 
 ## Overview
 
-This program performs an export of a specified formsite form with parameters. 
+This program performs an export of a specified formsite form with parameters
 A faster alternative to a manual export from the formsite website. It uses the formsite API v2 to perform exports of results. You can specify parametrs in commandline to filter these results. Allow afvanced features like link extraction and even download of files to a specified directory.
 
 ## Installation
@@ -13,7 +13,8 @@ You can install the required packages with:
 `pip install -r requirements.txt`
 
 The required packages are:
-```
+
+```txt
 regex
 openpyxl
 aiohttp
@@ -27,16 +28,20 @@ requests
 ## Usage
 
 **Required arguments:**
-```
+
+```powershell
 python getform.py -u USERNAME -t TOKEN -f FORM -s SERVER -d DIRECTORY
 ```
+
 **Optional arguments:**
-```
+
+```powershell
 [-h] [--afterref AFTERREF] [--beforeref BEFOREREF] [--afterdate AFTERDATE] [--beforedate BEFOREDATE] [--resultslabels RESULTSLABELS] [-r] [-o [OUTPUT_FILE]] [-x [EXTRACT_LINKS]] [-X LINKS_REGEX] [-D [DOWNLOAD_LINKS]] [--sort {asc,desc}] [-l] [-g] [-V] [-H] [--no_items]
 ```
 
-# **Examples:**
-## **Outputing to a file:**
+## **Examples:**
+
+### **Outputing to a file:**
 
 You can use the `-o` flag to output your export to a file. If you don't specify this flag, no results will be outputted. For reasons as to why you wouldn't include this flag, please see ***File downloads:*** below.
 
