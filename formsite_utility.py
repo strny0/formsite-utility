@@ -380,11 +380,13 @@ class _FormsiteAPI:
         async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None)) as self.session:
             with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=False) as self.pbar:
                 self.pbar.desc = "Fetching results"
-                self.results = [await self.fetch_results(1)]
+                self.results = []
+                first = await self.fetch_results(1)
+                self.results.append(first)
                 if self.total_pages > 1:
                     self.pbar.total = self.total_pages
                     tasks = set([self.fetch_results(page)
-                                 for page in range(2, self.total_pages)])
+                                 for page in range(2, self.total_pages+1)])
                     [self.results.append(res) for res in [await t for t in asyncio.as_completed(tasks)]]
                 self.pbar.desc = "Fetching items"
                 self.items = await self.fetch_items()
