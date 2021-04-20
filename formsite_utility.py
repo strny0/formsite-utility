@@ -25,6 +25,7 @@ import pandas as pd  # !
 import openpyxl  # !
 import argparse  # !
 
+
 class FormsiteParams:
 
     def __init__(self,
@@ -144,6 +145,7 @@ class FormsiteParams:
     def getItemsHeader(self) -> dict:
         return {"results_labels": self.resultslabels}
 
+
 class FormsiteCredentials:
     def __init__(self, username: str, api_token: str, fs_server: str, fs_directory: str):
         """Class which represents your user credentials for accessing the formsite API."""
@@ -182,6 +184,7 @@ class FormsiteCredentials:
         for k, v in chars2remove:
             argument = str(argument).replace(k, v)
         return argument
+
 
 class FormsiteInterface:
 
@@ -254,7 +257,7 @@ class FormsiteInterface:
                         if regex.search(links_regex, item) is not None:
                             for link in item.split(' | '):
                                 if link != '':
-                                    self.Links.add(link)                  
+                                    self.Links.add(link)
             except:
                 continue
 
@@ -269,7 +272,7 @@ class FormsiteInterface:
                     row[val] = row['stats'][val]
             forms_df = pd.DataFrame(
                 d, columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
-            forms_df.sort_values(by=['name'],inplace=True)
+            forms_df.sort_values(by=['name'], inplace=True)
             forms_df.reset_index(inplace=True, drop=True)
             return forms_df
 
@@ -288,7 +291,7 @@ class FormsiteInterface:
             self.ExtractLinks(links_regex=links_regex)
             self.ReturnLinks(links_regex=links_regex)
             return
-        
+
         return self.Links
 
     def WriteLinks(self, destination_path: PathLike, links_regex=r'.+'):
@@ -304,16 +307,17 @@ class FormsiteInterface:
             for link in sorted_links:
                 writer.write(link+"\n")
 
-    def DownloadFiles(self, download_folder: PathLike, max_concurrent_downloads=10, links_regex=r'.+', overwrite_existing=True) -> None:
+    def DownloadFiles(self, download_folder: PathLike, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True) -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
         if self.Links is None:
             self.ExtractLinks(links_regex=links_regex)
-            self.DownloadFiles(download_folder, max_concurrent_downloads=max_concurrent_downloads, links_regex=links_regex, overwrite_existing=overwrite_existing)
+            self.DownloadFiles(download_folder, max_concurrent_downloads=max_concurrent_downloads,
+                               links_regex=links_regex, filename_regex=filename_regex, overwrite_existing=overwrite_existing)
             return
 
         download_folder = self._validate_path(download_folder, is_folder=True)
         download_handler = _FormsiteDownloader(
-            download_folder, self.Links, max_concurrent_downloads, overwrite_existing=overwrite_existing)
+            download_folder, self.Links, max_concurrent_downloads, overwrite_existing=overwrite_existing, filename_regex = filename_regex)
         asyncio.get_event_loop().run_until_complete(download_handler.Start())
 
     def ListColumns(self):
@@ -333,7 +337,8 @@ class FormsiteInterface:
     def WriteResults(self, destination_path: PathLike, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
         if self.Data is None:
             self.FetchResults()
-            self.WriteResults(destination_path, encoding=encoding, date_format=date_format)
+            self.WriteResults(destination_path,
+                              encoding=encoding, date_format=date_format)
             return
 
         output_file = self._validate_path(destination_path)
@@ -354,6 +359,7 @@ class FormsiteInterface:
         latest_ref = max(self.Data['Reference #'])
         with open(output_file, 'w') as writer:
             writer.write(latest_ref)
+
 
 class _FormsiteAPI:
     def __init__(self, interface: FormsiteInterface, save_results_jsons=False, save_items_json=False, refresh_items_json=False):
@@ -422,6 +428,7 @@ class _FormsiteAPI:
         self.pbar.update(1)
         return content.decode('utf-8')
 
+
 class _FormsiteProcessing:
     def __init__(self, items: str, results: list, interface: FormsiteInterface, sort_asc=False):
         self.items_json = json.loads(items)
@@ -470,6 +477,7 @@ class _FormsiteProcessing:
             by=['Reference #'], ascending=self.sort_asc, inplace=True)
         pbar.desc = "Results processed"
         pbar.update(1)
+        pbar.close()
         return final_dataframe
 
     def _divide(self, lst, n):
@@ -551,26 +559,28 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
 
+
 class _FormsiteDownloader:
-    def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int, overwrite_existing=True):
+    def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int, overwrite_existing=True, filename_regex=r''):
         self.download_folder = download_folder
+        self.filename_regex = filename_regex
         self.semaphore = asyncio.Semaphore(max_concurrent_downloads)
         if overwrite_existing or len(links) == 0:
             self.links = links
         else:
-            url= ''
+            url = ''
             for i in list(links)[0].split('/')[:-1]:
-                url+=i+'/'
+                url += i+'/'
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
             self.links = links - filenames_in_dl_dir
-            
+
     async def Start(self):
         """Starts download of links."""
         async with ClientSession(connector=TCPConnector(limit=None)) as session:
             with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=False) as self.pbar:
                 tasks = []
                 for link in self.links:
-                    task = asyncio.create_task(self._download(link, session))
+                    task = asyncio.create_task(self._download(link, session, self.filename_regex))
                     tasks.append(task)
                 await asyncio.gather(*tasks)
                 self.pbar.desc = "Download complete"
@@ -587,18 +597,49 @@ class _FormsiteDownloader:
                 response.raise_for_status()
                 return await response.read()
         except:
-            self._fetch(url, session)
+            resp = await self._fetch(url, session)
+            return resp
 
     async def _write(self, content, filename):
         async with aiofiles.open(filename, "wb") as writer:
             await writer.write(content)
 
-    async def _download(self, url, session):
-        filename = f"{self.download_folder}/{url.split('/')[-1:][0]}"
+    async def _download(self, url, session, filename_regex):
+        filename = f"{url.split('/')[-1:][0]}"
+        if filename_regex != '':
+            filename = self._regex_substitution(filename, filename_regex)
+            filename = f"{self.download_folder}/{filename}"
+            filename = self._check_if_file_exists(filename)
+        else:
+            filename = f"{self.download_folder}/{filename}"    
+        
         async with self.semaphore:
             content = await self._fetch(url, session)
             await self._write(content, filename)
             self.pbar.update(1)
+    
+    def _check_if_file_exists(self, filename, n = 0):
+        path = Path(filename).resolve()
+        if path.exists():
+            temp = filename.rsplit('.', 1)
+            if temp[0].endswith(f'_{n}'):
+                temp[0] = temp[0][:temp[0].rfind(f'_{n}')]
+            filename = temp[0] + f"_{n+1}." + temp[1]
+            filename = self._check_if_file_exists(filename, n = n+1)
+        return filename
+    
+    def _regex_substitution(self, filename, filename_regex):
+        try:
+            temp = filename.rsplit('.', 1)
+            try:
+                filename =f"{regex.sub(filename_regex, '', temp[0])}.{temp[1]}"
+            except:
+                filename =f"{regex.sub(filename_regex, '', temp[0])}"
+        except:
+            filename =f"{regex.sub(filename_regex, '', filename)}"
+        return filename
+        
+
 
 def GatherArguments():
     parser = argparse.ArgumentParser(
@@ -656,7 +697,7 @@ def GatherArguments():
     g_params.add_argument('--sort', choices=['asc', 'desc'], type=str,  default="desc",
                           help="Determines how the output CSV will be sorted. Defaults to descending."
                           )
-    g_params.add_argument('--resultslabels', type=int, default=10,
+    g_params.add_argument('--resultslabels', type=int, default=0,
                           help="Use specific results labels for your CSV headers. \nDefaults to 0, which takes the first set results labels or if those are not available, default question labels."
                           )
     g_params.add_argument('--resultsview', type=int, default=11,
@@ -717,6 +758,10 @@ def GatherArguments():
                                help="You can specify the number of concurrent download tasks. More for large numbers of small files, less for large files. Default is 10")
     g_func_params.add_argument('-n', '--dont_overwrite_downloads',  default=True, action="store_false",
                                help="If you include this flag, files with the same filenames as you are downloading will not be overwritten and re-downloaded.")
+    g_func_params.add_argument('-R', '--filename_regex',  default='', type=str,
+                               help="If you include this argument, filenames of the files you download from formsite servers will remove all characters from their name that dont match the regex you provide."
+                               "\nExpecting an input of allowed characters, for example: -R '[^A-Za-z0-9\\_\\-]+'"
+                               "\nAny files that would be overwritten as a result of the removal of characters will be appended with _1, _2, etc.")
     g_functions.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
                              help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
     g_nocreds.add_argument('-V', '--version', action="store_true",  default=False,
@@ -746,6 +791,7 @@ def GatherArguments():
                          )
     return parser.parse_known_args()[0]
 
+
 if __name__ == '__main__':
     arguments = GatherArguments()
     parameters = FormsiteParams(
@@ -765,7 +811,7 @@ if __name__ == '__main__':
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.3"
+        current_version = "1.2.4"
 
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
@@ -813,10 +859,10 @@ if __name__ == '__main__':
         if arguments.download_links == 'default':
             default_folder = f'./download_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}'
             interface.DownloadFiles(
-                default_folder, max_concurrent_downloads=arguments.concurrent_downloads, links_regex=arguments.links_regex, overwrite_existing=arguments.dont_overwrite_downloads)
+                default_folder, max_concurrent_downloads=arguments.concurrent_downloads, links_regex=arguments.links_regex, filename_regex=arguments.filename_regex, overwrite_existing=arguments.dont_overwrite_downloads)
         else:
             interface.DownloadFiles(
-                arguments.download_links, max_concurrent_downloads=arguments.concurrent_downloads, overwrite_existing=arguments.dont_overwrite_downloads)
+                arguments.download_links, max_concurrent_downloads=arguments.concurrent_downloads, links_regex=arguments.links_regex, filename_regex=arguments.filename_regex, overwrite_existing=arguments.dont_overwrite_downloads)
         print("\ndownload complete")
     if arguments.store_latest_ref is not False:
         if arguments.store_latest_ref == 'default':
