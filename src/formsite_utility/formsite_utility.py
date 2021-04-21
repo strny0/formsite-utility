@@ -9,22 +9,22 @@
 from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
 from pathlib import Path as Path  # s
-import json  # s
-import concurrent.futures
+from json import loads  # s
+from concurrent.futures import ProcessPoolExecutor, wait
 from multiprocessing import cpu_count
 from aiohttp.typedefs import PathLike
 
+from time import perf_counter
 from tqdm.asyncio import tqdm  # !
 import os
-import pytz  # !
-import regex  # !
+from pytz import timezone as pytztimezone
+from regex import sub, search, compile  # !
 import asyncio  # !
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, request
-import aiofiles
+from aiofiles import open as aiopen
 import pandas as pd  # !
 import openpyxl  # !
 import argparse  # !
-
 
 class FormsiteParams:
 
@@ -117,17 +117,17 @@ class FormsiteParams:
     def _calculate_tz_offset(self, timezone):
         """Converts input timezone (offset from utc or tz databse name) to an offset relative to local timezone."""
         local_date = dt.now()
-        if regex.search(r'(\+|\-|)([01]?\d|2[0-3])([0-5]\d)', timezone) is not None:
+        if search(r'(\+|\-|)([01]?\d|2[0-3])([0-5]\d)', timezone) is not None:
             inp = timezone.replace("'", "")
             inp = [inp[:2], inp[2:]] if len(inp) == 4 else [inp[:3], inp[3:]]
             offset_from_local = td(hours=int(inp[0]), seconds=int(inp[1])/60)
-        elif regex.search(r'(\+|\-|)([01]?\d|2[0-3]):([0-5]\d)', timezone) is not None:
+        elif search(r'(\+|\-|)([01]?\d|2[0-3]):([0-5]\d)', timezone) is not None:
             inp = timezone.replace("'", "")
             inp = [inp[:2], inp[3:]] if len(inp) == 5 else [inp[:3], inp[4:]]
             offset_from_local = td(hours=int(inp[0]), seconds=int(inp[1])/60)
-        elif regex.search(r'.+/.+', timezone) is not None:
+        elif search(r'.+/.+', timezone) is not None:
             try:
-                inp = pytz.timezone(timezone).localize(
+                inp = pytztimezone(timezone).localize(
                     local_date).strftime("%z")
                 inp = [inp[:2], inp[2:]] if len(inp) == 4 else [
                     inp[:3], inp[3:]]
@@ -246,18 +246,17 @@ class FormsiteInterface:
 
     def ExtractLinks(self, links_regex=r'.+') -> None:
         """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
+        links_regex = compile(links_regex)
         if self.Data is None:
             self.FetchResults()
         self.Links = set()
         for col in self.Data.columns:
-            txt = self.Data[col].to_list()
+            column_as_list = self.Data[col].to_list()
             try:
-                for item in txt:
+                for item in column_as_list:
                     if item.startswith(self.url_files) == True:
-                        if regex.search(links_regex, item) is not None:
-                            for link in item.split(' | '):
-                                if link != '':
-                                    self.Links.add(link)
+                        if links_regex.search(item) is not None:
+                            [self.Links.add(link) for link in item.split(' | ') if link != '']
             except:
                 continue
 
@@ -266,7 +265,7 @@ class FormsiteInterface:
         async with request("GET", url_forms, headers=self.authHeader) as response:
             response.raise_for_status()
             content = await response.content.read()
-            d = json.loads(content.decode('utf-8'))['forms']
+            d = loads(content.decode('utf-8'))['forms']
             for row in d:
                 for val in row["stats"]:
                     row[val] = row['stats'][val]
@@ -302,10 +301,9 @@ class FormsiteInterface:
             return
         output_file = self._validate_path(destination_path)
         with open(output_file, 'w') as writer:
-            sorted_links = list(self.Links)
+            sorted_links = [link + '\n' for link in self.Links]
             sorted_links.sort(reverse=True)
-            for link in sorted_links:
-                writer.write(link+"\n")
+            writer.writelines(sorted_links)
 
     def DownloadFiles(self, download_folder: PathLike, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True) -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
@@ -324,15 +322,16 @@ class FormsiteInterface:
         """Prints list of columns (items, usercontrols) and their respective formsite IDs."""
         api_handler = _FormsiteAPI(interface)
         api_handler.check_pages = False
-        items, _ = asyncio.get_event_loop().run_until_complete(api_handler.Start())
-        items = pd.DataFrame(json.loads(items)['items'], columns=[
+        items = asyncio.get_event_loop().run_until_complete(api_handler.Start(only_items=True))
+        items = pd.DataFrame(loads(items)['items'], columns=[
                              'id', 'label', 'position'])
         items = items.set_index('id')
         pd.set_option('display.max_rows', None)
-        print("only showing user controls and their positon")
+        print(items)
+        print('----------------')
         print(f"Results labels: {arguments.resultslabels}")
         print(f"Results view: {arguments.resultsview}")
-        print(items)
+        
 
     def WriteResults(self, destination_path: PathLike, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
         if self.Data is None:
@@ -343,10 +342,11 @@ class FormsiteInterface:
 
         output_file = self._validate_path(destination_path)
 
-        if regex.search('.+\\.xlsx$', output_file) is not None:
-            self.Data.to_excel(output_file, index=False, encoding=encoding)
+        if search('.+\\.xlsx$', output_file) is not None:
+            print('Writing to excel (this can be slow for large files!)')
+            self.Data.to_excel(output_file, index=False, engine='openpyxl', freeze_panes=(1,1))
         else:
-            self.Data.to_csv(output_file, index=False,
+            self.Data.to_csv(output_file, index=False, chunksize=1024,
                              encoding=encoding, date_format=date_format, line_terminator="\n", sep=',')
 
     def WriteLatestRef(self, destination_path: PathLike):
@@ -375,23 +375,28 @@ class _FormsiteAPI:
         self.refresh_items_json = refresh_items_json
         self.check_pages = True
 
-    async def Start(self):
+    async def Start(self, only_items=False):
         """Performs all API calls to formsite servers asynchronously"""
         async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None)) as self.session:
             with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=False) as self.pbar:
-                self.pbar.desc = "Fetching results"
-                self.results = []
-                first = await self.fetch_results(1)
-                self.results.append(first)
-                if self.total_pages > 1:
-                    self.pbar.total = self.total_pages
-                    tasks = set([self.fetch_results(page)
-                                 for page in range(2, self.total_pages+1)])
-                    [self.results.append(res) for res in [await t for t in asyncio.as_completed(tasks)]]
-                self.pbar.desc = "Fetching items"
-                self.items = await self.fetch_items()
-                self.pbar.desc = "API calls complete"
-        return self.items, self.results
+                if only_items:
+                    items = await self.fetch_items()
+                    self.pbar.update(1)
+                    return items
+                else:
+                    self.pbar.desc = "Fetching results"
+                    results = []
+                    first = await self.fetch_results(1)
+                    results.append(first)
+                    if self.total_pages > 1:
+                        self.pbar.total = self.total_pages
+                        tasks = set([self.fetch_results(page)
+                                     for page in range(2, self.total_pages+1)])
+                        [results.append(res) for res in [await t for t in asyncio.as_completed(tasks)]]
+                    self.pbar.desc = "Fetching items"
+                    items = await self.fetch_items()
+                    self.pbar.desc = "API calls complete"
+        return items, results
 
     async def fetch_results(self, page) -> str:
         params = self.paramsHeader
@@ -403,7 +408,7 @@ class _FormsiteAPI:
         return content.decode('utf-8')
 
     async def write_content(self, filename, content) -> None:
-        async with aiofiles.open(filename, 'wb') as writer:
+        async with aiopen(filename, 'wb') as writer:
             await writer.write(content)
 
     async def fetch_content(self, url, params) -> bytes:
@@ -433,14 +438,16 @@ class _FormsiteAPI:
 
 class _FormsiteProcessing:
     def __init__(self, items: str, results: list, interface: FormsiteInterface, sort_asc=False):
-        self.items_json = json.loads(items)
-        self.results_jsons = [json.loads(results_page)
-                              for results_page in results]
+        self.items_json = loads(items)
+        self.results_jsons = [loads(results_page) for results_page in results]
         self.timezone_offset = interface.params.timezone_offset
+        self.sort_asc = sort_asc
+        self.columns = self._generate_columns()
+
+    def _generate_columns(self):
         ih = pd.DataFrame(self.items_json['items'])['label']
         ih.name = None
-        self.columns = ih.to_list()
-        self.sort_asc = sort_asc
+        return ih.to_list()
 
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
@@ -449,49 +456,43 @@ class _FormsiteProcessing:
         except AssertionError:
             print("No results to process.")
             return None
-        splits = self._divide(self.results_jsons, cpu_count())
-        pbar = tqdm(total=len(splits)+4, desc='Processing results',
-                    leave=False)
-
-        def _update_pbar(f):
+        split_workload = self._divide_workload(self.results_jsons, cpu_count())
+        with tqdm(total=len(split_workload)+5, desc='Processing results', leave=False) as pbar:
             pbar.update(1)
-            return f
 
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            futures = []
-            for split in splits:
-                if split != []:
-                    future = executor.submit(self._process_many, split)
-                    future.add_done_callback(_update_pbar)
-                    futures.append(future)
-            concurrent.futures.wait(futures)
+            def _update_pbar(f):
+                pbar.update(1)
+                return f
+
+            with ProcessPoolExecutor() as executor:
+               futures = []
+               for split in split_workload:
+                   if split != []:
+                       future = executor.submit(self._process_list, split)
+                       future.add_done_callback(_update_pbar)
+                       futures.append(future)
+               wait(futures)
+               pbar.update(1)
+               final_dataframe = pd.concat((future.result() for future in futures))
+
+            pbar.desc = "Sorting results"
             pbar.update(1)
-            dataframe_list = []
-            for future in futures:
-                dataframe_list.append(future.result())
-
-        pbar.desc = "Combining results"
-        pbar.update(1)
-        final_dataframe = pd.concat(dataframe_list)
-        pbar.desc = "Sorting results"
-        pbar.update(1)
-        final_dataframe.sort_values(
-            by=['Reference #'], ascending=self.sort_asc, inplace=True)
-        pbar.desc = "Results processed"
-        pbar.update(1)
-        pbar.close()
+            final_dataframe.sort_values(
+                by=['Reference #'], ascending=self.sort_asc, inplace=True)
+            pbar.desc = "Results processed"
+            pbar.update(1)
         return final_dataframe
 
-    def _divide(self, lst, n):
-        p = len(lst) // n
-        if p == 0:
-            return self._divide(lst[p:], n-1)
-        elif len(lst)-p > 0:
-            return [lst[:p]] + self._divide(lst[p:], n-1)
+    def _divide_workload(self, full_list, num_splits):
+        len_split = len(full_list) // num_splits
+        if len_split == 0:
+            return self._divide_workload(full_list[len_split:], num_splits-1)
+        elif len(full_list)-len_split > 0:
+            return [full_list[:len_split]] + self._divide_workload(full_list[len_split:], num_splits-1)
         else:
-            return [lst]
+            return [full_list]
 
-    def _process_many(self, results_jsons_split: list):
+    def _process_list(self, results_jsons_split: list):
         dataframes = []
         for results_json in results_jsons_split:
             dataframe = self._process_one(results_json)
@@ -512,15 +513,15 @@ class _FormsiteProcessing:
         """Creates a dataframe from a json file for hardcoded columns"""
         dataframe_in_progress = pd.DataFrame(results_json['results'])
         dataframe_in_progress['date_update'] = dataframe_in_progress['date_update'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
+           lambda x: self._string2datetime(x, self.timezone_offset))
         dataframe_in_progress['date_start'] = dataframe_in_progress['date_start'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
+           lambda x: self._string2datetime(x, self.timezone_offset))
         dataframe_in_progress['date_finish'] = dataframe_in_progress['date_finish'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
+           lambda x: self._string2datetime(x, self.timezone_offset))
         dataframe_in_progress['duration'] = dataframe_in_progress['date_finish'] - \
-            dataframe_in_progress['date_start']
+           dataframe_in_progress['date_start']
         dataframe_in_progress['duration'] = dataframe_in_progress['duration'].apply(
-            lambda x: x.total_seconds())
+           lambda x: x.total_seconds())
         return dataframe_in_progress
 
     def _separate_items_single(self, unprocessed_dataframe: pd.DataFrame):
@@ -536,7 +537,7 @@ class _FormsiteProcessing:
                     for value in cell['values']:
                         final_value += value['value']
                         if len(cell['values']) > 1:
-                            # | is a separator used by formsite, found on controls with multiple outputs, such as checkboxes
+                            # | is a separator used by formsite, found on controls with multiple outputs, eg. checkboxes
                             final_value += " | "
                 processed_row.append(final_value)
             list_of_rows.append(processed_row)
@@ -565,14 +566,14 @@ class _FormsiteProcessing:
 class _FormsiteDownloader:
     def __init__(self, download_folder: PathLike, links: set, max_concurrent_downloads: int, overwrite_existing=True, filename_regex=r''):
         self.download_folder = download_folder
-        self.filename_regex = filename_regex
+        self.filename_regex = compile(filename_regex)
         self.semaphore = asyncio.Semaphore(max_concurrent_downloads)
         if overwrite_existing or len(links) == 0:
             self.links = links
         else:
             url = ''
-            for i in list(links)[0].split('/')[:-1]:
-                url += i+'/'
+            for i in tuple(links)[0].split('/')[:-1]:
+                url += i + '/'
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
             self.links = links - filenames_in_dl_dir
 
@@ -580,10 +581,7 @@ class _FormsiteDownloader:
         """Starts download of links."""
         async with ClientSession(connector=TCPConnector(limit=None)) as session:
             with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=False) as self.pbar:
-                tasks = []
-                for link in self.links:
-                    task = asyncio.create_task(self._download(link, session, self.filename_regex))
-                    tasks.append(task)
+                tasks = (asyncio.create_task(self._download(link, session, self.filename_regex)) for link in self.links)
                 await asyncio.gather(*tasks)
                 self.pbar.desc = "Download complete"
 
@@ -603,12 +601,12 @@ class _FormsiteDownloader:
             return resp
 
     async def _write(self, content, filename):
-        async with aiofiles.open(filename, "wb") as writer:
+        async with aiopen(filename, "wb") as writer:
             await writer.write(content)
 
     async def _download(self, url, session, filename_regex):
         filename = f"{url.split('/')[-1:][0]}"
-        if filename_regex != '':
+        if filename_regex.pattern != '':
             filename = self._regex_substitution(filename, filename_regex)
             filename = f"{self.download_folder}/{filename}"
             filename = self._check_if_file_exists(filename)
@@ -620,13 +618,16 @@ class _FormsiteDownloader:
             await self._write(content, filename)
             self.pbar.update(1)
     
-    def _check_if_file_exists(self, filename, n = 0):
+    def _check_if_file_exists(self, filename, n = 0) -> str:
         path = Path(filename).resolve()
         if path.exists():
             temp = filename.rsplit('.', 1)
             if temp[0].endswith(f'_{n}'):
                 temp[0] = temp[0][:temp[0].rfind(f'_{n}')]
-            filename = temp[0] + f"_{n+1}." + temp[1]
+            try:
+                filename = temp[0] + f"_{n+1}." + temp[1]
+            except IndexError:
+                filename = temp[0] + f"_{n+1}"
             filename = self._check_if_file_exists(filename, n = n+1)
         return filename
     
@@ -634,11 +635,11 @@ class _FormsiteDownloader:
         try:
             temp = filename.rsplit('.', 1)
             try:
-                filename =f"{regex.sub(filename_regex, '', temp[0])}.{temp[1]}"
+                filename =f"{filename_regex.sub('', temp[0])}.{temp[1]}"
             except:
-                filename =f"{regex.sub(filename_regex, '', temp[0])}"
+                filename =f"{filename_regex.sub('', temp[0])}"
         except:
-            filename =f"{regex.sub(filename_regex, '', filename)}"
+            filename =f"{filename_regex.sub('', filename)}"
         return filename
         
 
@@ -691,16 +692,19 @@ def GatherArguments():
                           help="Get results lesser than a specified Reference #. \nMust be an integer."
                           )
     g_params.add_argument('--afterdate', type=str, default="",
-                          help="Get results after a specified date. \nMust be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS. \nThis date is in your local timezone, unless specified otherwise."
+                          help="Get results after a specified date. \nMust be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS."
+                          "\nThis date is in your local timezone, unless specified otherwise."
                           )
     g_params.add_argument('--beforedate', type=str, default="",
-                          help="Get results before a specified date. \nMust be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS. \nThis date is in your local timezone, unless specified otherwise."
+                          help="Get results before a specified date. \nMust be formatted as ISO 8601 UTC, YYYY-MM-DD, or YYYY-MM-DD HH:MM:SS."
+                          "\nThis date is in your local timezone, unless specified otherwise."
                           )
     g_params.add_argument('--sort', choices=['asc', 'desc'], type=str,  default="desc",
                           help="Determines how the output CSV will be sorted. Defaults to descending."
                           )
     g_params.add_argument('--resultslabels', type=int, default=0,
-                          help="Use specific results labels for your CSV headers. \nDefaults to 0, which takes the first set results labels or if those are not available, default question labels."
+                          help="Use specific results labels for your CSV headers."
+                          "\nDefaults to 0, which takes the first set results labels or if those are not available, default question labels."
                           )
     g_params.add_argument('--resultsview', type=int, default=11,
                           help="Use specific results view for your CSV headers. Defaults to 11 = Items+Statistics. Other values currently not supported"
@@ -734,12 +738,10 @@ def GatherArguments():
                           "\n'+09:00' - Tokyo, Seoul, Pyongyang, Ambon, Chita"
                           "\n'+10:00' - Sydney, Port Moresby, Vladivostok"
                           "\n"
-                          "\n[Examples: database names]"
-                          "\n'US/Central'"
+                          "\n[Examples: database names] avoid using deprecated ones"
+                          "\n'America/Chicago'"
                           "\n'Europe/Paris'"
                           "\n'America/New_York'"
-                          "\n'Etc/GMT+2'"
-                          "\n'MST'"
                           "\n'Asia/Bangkok'"
                           )
     g_functions.add_argument('-o', '--output_file', nargs='?', default=False, const='default',
@@ -754,10 +756,14 @@ def GatherArguments():
                              "\nIf you don't specify a location, it will default to the folder of the script."
                              )
     g_func_params.add_argument('-X', '--links_regex', type=str,  default='.+',
-                               help="Keep only links that match the regex you provide. \nWon't do anything if -x or -d arguments are not provided. \nDefaults to '.+'. Example usage: '-X \\.json$' would only give you files that have .json extension."
+                               help="Keep only links that match the regex you provide."
+                               "\nWon't do anything if -x or -d arguments are not provided."
+                               "\nDefaults to '.+'. Example usage: '-X \\.json$' would only give you files that have .json extension."
                                )
     g_func_params.add_argument('-c', '--concurrent_downloads',  default=10, type=int,
-                               help="You can specify the number of concurrent download tasks. More for large numbers of small files, less for large files. Default is 10")
+                               help="You can specify the number of concurrent download tasks."
+                               "\nMore for large numbers of small files, less for large files."
+                               "\nDefault is 10")
     g_func_params.add_argument('-n', '--dont_overwrite_downloads',  default=True, action="store_false",
                                help="If you include this flag, files with the same filenames as you are downloading will not be overwritten and re-downloaded.")
     g_func_params.add_argument('-R', '--filename_regex',  default='', type=str,
@@ -771,12 +777,12 @@ def GatherArguments():
                            )
     g_nocreds.add_argument('-l', '--list_columns', action="store_true",  default=False,
                            help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments."
-                           "\nRequires login info and form id."
+                           "\nRequires login info and form id. Overrides all other functionality of the program."
                            )
     g_nocreds.add_argument('-L', '--list_forms', nargs='?',  default=False, const='default',
                            help="By itself, prints all forms, their form ids and status. You can specify a file to save the data into."
-                           "\nExample: `-L ./list_of_forms.csv`; `-L` by itself only prints it to console."
-                           "\nRequires login info."
+                           "\nExample: '-L ./list_of_forms.csv' to output to file or '-L' by itself to print to console."
+                           "\nRequires login info. Overrides all other functionality of the program."
                            )
     g_debug.add_argument('--generate_results_jsons', action="store_true",  default=False,
                          help="If you use this flag, program will output raw results in json format from API requests."
@@ -795,6 +801,7 @@ def GatherArguments():
 
 
 if __name__ == '__main__':
+    t0 = perf_counter()
     arguments = GatherArguments()
     parameters = FormsiteParams(
         afterref=arguments.afterref,
@@ -813,7 +820,7 @@ if __name__ == '__main__':
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.4"
+        current_version = "1.2.5"
 
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
@@ -847,7 +854,7 @@ if __name__ == '__main__':
         else:
             interface.WriteResults(arguments.output_file,
                                    date_format=arguments.date_format)
-        print("\nexport complete")
+        print("export complete")
     if arguments.extract_links is not False:
         if arguments.extract_links == 'default':
             default_filename = f'./links_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.txt'
@@ -865,7 +872,7 @@ if __name__ == '__main__':
         else:
             interface.DownloadFiles(
                 arguments.download_links, max_concurrent_downloads=arguments.concurrent_downloads, links_regex=arguments.links_regex, filename_regex=arguments.filename_regex, overwrite_existing=arguments.dont_overwrite_downloads)
-        print("\ndownload complete")
+        print("download complete")
     if arguments.store_latest_ref is not False:
         if arguments.store_latest_ref == 'default':
             default_filename = './latest_ref.txt'
@@ -874,4 +881,4 @@ if __name__ == '__main__':
             interface.WriteLatestRef(arguments.store_latest_ref)
         print("latest reference saved")
 
-    print('done!')
+    print(f'done in {(perf_counter() - t0):0.2f} seconds!')

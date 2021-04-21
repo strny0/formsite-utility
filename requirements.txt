@@ -1,6 +1,5 @@
 aiofiles
 aiohttp
-datetime
 openpyxl
 pandas
 python_dateutil
