@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Script: formsite-util.py
 # Author: Jakub Strnad
 # Documentation: https://github.com/strny0/formsite-utility
 
@@ -74,7 +73,7 @@ class FormsiteParams:
             self.beforedate = self.__shift_param_date__(
                 self.beforedate, self.timezone_offset)
             resultsParams['before_date'] = self.beforedate
-        # 11 = all items + statistics
+        # 11 = all items + statistics results view
         resultsParams['results_view'] = self.resultsview
         if self.colID_sort != 0:
             resultsParams['sort_id'] = self.colID_sort
@@ -816,7 +815,7 @@ def main():
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.6"
+        current_version = "1.2.6.1"
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
                 content = await r.content.read()
