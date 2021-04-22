@@ -449,8 +449,9 @@ class _FormsiteProcessing:
         """Return a dataframe in the same format as a regular formsite export."""
         if len(self.results_jsons[0]['results']) == 0:
             raise Exception(f"No results to process! FetchResults returned an empty list.")
-        with tqdm(total=len(self.results_jsons)+3, initial=1, desc='Processing results', leave=False) as self.pbar:
-            final_dataframe = self._process_list(self.results_jsons)
+        with tqdm(total=3, desc='Processing results', leave=False) as self.pbar:
+            final_dataframe = self._init_process(self.results_jsons)
+            self.pbar.update(1)
             self.pbar.desc = "Sorting results"
             self.pbar.update(1)
             final_dataframe.sort_values(
@@ -459,23 +460,22 @@ class _FormsiteProcessing:
             self.pbar.update(1)
         return final_dataframe
 
-    def _process_list(self, results_jsons_split: list):
-        dataframes = tuple(pd.DataFrame(results_json['results']) for results_json in results_jsons_split)
+    def _init_process(self, result_jsons: list):
+        dataframes = tuple(pd.DataFrame(results_json['results']) for results_json in result_jsons)
         dataframe = pd.concat(dataframes)
-        dataframe = self._process_one(dataframe)
+        dataframe = self._process(dataframe)
         return dataframe
 
-    def _process_one(self, dataframe_in_progress):
-        dataframe_in_progress = self._make_dataframe_page_hardcoded(dataframe_in_progress)
-        items_df = pd.DataFrame(self._separate_items_single(
+    def _process(self, dataframe_in_progress):
+        dataframe_in_progress = self._init_dataframe(dataframe_in_progress)
+        items_df = pd.DataFrame(self._separate_items(
             dataframe_in_progress['items']), columns=self.columns)
         df_1, df_2 = self._hardcoded_columns_renaming(
             dataframe_in_progress.reset_index(drop=True))
         final_dataframe = pd.concat([df_1, items_df, df_2], axis=1)
-        self.pbar.update(1)
         return final_dataframe
 
-    def _make_dataframe_page_hardcoded(self, dataframe_in_progress) -> pd.DataFrame:
+    def _init_dataframe(self, dataframe_in_progress) -> pd.DataFrame:
         """Creates a dataframe from a json file for hardcoded columns"""
         dataframe_in_progress['date_update'] = dataframe_in_progress['date_update'].apply(
            lambda x: self._string2datetime(x, self.timezone_offset))
@@ -489,7 +489,7 @@ class _FormsiteProcessing:
            lambda x: x.total_seconds())
         return dataframe_in_progress
 
-    def _separate_items_single(self, unprocessed_dataframe: pd.DataFrame):
+    def _separate_items(self, unprocessed_dataframe: pd.DataFrame):
         """Separates the items array for each submission in results into desired format"""
         list_of_rows = []
         for row in unprocessed_dataframe:
