@@ -32,19 +32,19 @@ tqdm
 
 ### Usage
 
+You can invoke the module with `getform -args` or `formsite-util -args`
+
+You can access the help page with `getform -h`
+
 **Required arguments:**
 
-```powershell
-python formsite_utility.py -u USERNAME -t TOKEN -s SERVER -d DIRECTORY -f FORM
-```
-
 ```bash
-python3 formsite_utility.py -u USERNAME -t TOKEN -s SERVER -d DIRECTORY -f FORM 
+getform -u 'USERNAME' -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY' -f '[FORM]'
 ```
 
 **Optional arguments:**
 
-```powershell
+```txt
 [-h] [--afterref AFTERREF] [--beforeref BEFOREREF] [--afterdate AFTERDATE] [--beforedate BEFOREDATE] [--resultslabels RESULTSLABELS] [-r] [-o [OUTPUT_FILE]] [-x [EXTRACT_LINKS]] [-X LINKS_REGEX] [-D [DOWNLOAD_LINKS]] [--sort {asc,desc}] [-l] [-g] [-V] [-H] [--no_items]
 ```
 
@@ -56,21 +56,14 @@ python3 formsite_utility.py -u USERNAME -t TOKEN -s SERVER -d DIRECTORY -f FORM
 
 Login arguments are required for nearly all operations.
 
-On Windows in powershell or cmd, run:
-
-```powershell
-python formsite_utility.py -u 'USERNAME' -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
-```
-
-On Unix:
 
 ```bash
-python3 formsite_utility.py -u 'USERNAME' -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
+getform -u 'USERNAME' -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
 ```
 
 **Username**: Username of the account used to create your API token
 
-**Token**: Your Formsite API token. You can get it in [todo]
+**Token**: Your Formsite API token.
 
 **Server**: Your Formsite server. A part of the url. https:/<span></span>/`fsX`.forms… <- the 'fsX' part. For example 'fs22'.
 
@@ -80,22 +73,14 @@ python3 formsite_utility.py -u 'USERNAME' -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
 
 Results parameters are used to set filters upon the results you are retreiving from a specific form. All but the `--form` argument are optional.
 
-**Form**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/gnosdH/`hfjfdyjyf`
+**Form**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/gnosdH/`hfjfdyjyf` or by running `getform -L` to list all forms and their IDs
 
 #### **After and before Reference #**
 
 You can provide arguments `--afterref *int* and --beforeref *int*` to specify an interval of which reference numbers to get from your export. It is the same as setting a filter based on reference number when doing an export from the formsite website.
 
-On Windows in powershell or cmd, run:
-
-```powershell
-python .\formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' --afterref 14856178 ---beforeref 15063325 -o
-```
-
-On Unix:
-
 ```bash
-python3 formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server'  --afterref 14856178 ---beforeref 15063325 -o
+getform -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server'  --afterref 14856178 ---beforeref 15063325 -o
 ```
 
 This will retrieve all results in between reference numbers `14856178` and `15063325`. You can also specify only afterref or only beforeref by itself, which would give you its respective results. You can also omit this argument entierly, which would give you all results currently present in the form.
@@ -112,16 +97,8 @@ yyyy-mm-ddTHH:MM:SSZ
 2021-01-20T12:00:00Z is 20th Januray, 2021 at noon
 ```
 
-On Windows in powershell or cmd:
-
-```powershell
-python formsite_utility.py -u username -t token -f form_id -d directory -s server --afterdate '2021-01-01T00:00:00Z' ---beforedate '2021-02-01T00:00:00Z' -o
-```
-
-On Unix:
-
 ```bash
-python3 formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' --afterdate '2021-01-01' ---beforedate '2021-02-01' -o
+getform -u username -t token -f form_id -d directory -s server --afterdate '2021-01-01T00:00:00Z' ---beforedate '2021-02-01T00:00:00Z' -o
 ```
 
 This will retrieve all results in for the month of January. You can also specify only afterdate or only beforedate by itself, which would give you its respective results. You can also omit this argument entierly, which would give you all results currently present in the form.
@@ -133,14 +110,8 @@ The dates provided are in your **local timezone**. This can become a problem if 
 You can set a manual offset with the `-T` or `--timezone` arguments.
 They take either an offset in the `+05:00` | `-03:00` format or a timezone databse name such as `US/Central`. This will shift formsite statistics dates *(column Date for example)* and your input before/after date argument to your input timezone.
 
-```powershell
-python formsite_utility.py -u username -t token -f form_id -d directory -s server -T 'US/Central' -o
-```
-
-On Unix:
-
 ```bash
-python3 formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' --afterdate '2021-02-01T00:00:00Z' ---beforedate '2021-02-01T06:30:00Z' -o -T 'America/New_York'
+getform -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' --afterdate '2021-02-01T00:00:00Z' ---beforedate '2021-02-01T06:30:00Z' -o -T 'America/New_York'
 ```
 
 #### **Date format:**
@@ -155,7 +126,7 @@ Sets the date format of all formsite statistics dates such as the Date column. O
 
 #### **Sorting:**
 
-Invoked with `--sort` [asc|desc]
+Invoked with `--sort` [asc|desc] ex: `--sort asc`
 
 Sorts rows based on Reference # column.
 
@@ -183,16 +154,8 @@ export_formID_date.csv
 
 If you specify the file extension to be `.xlsx` the results export will be an excel file. If you don't or you choose a format other than excel, you will get a `.csv`
 
-On Windows in either powershell or cmd:
-
-```powershell
-python formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -o .\exports\export_projectName.xlsx
-```
-
-On Unix:
-
 ```bash
-python3 formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -o ./exports/export_projectName.csv
+getform -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -o ./exports/export_projectName.csv
 ```
 
 **`NOTE:` Putting the path in quotes is optional, but REQUIRED if your path contains a space**
@@ -209,18 +172,8 @@ The links file defaults to the same directory as the `getform.py` with the file 
 
 You can use the `-D` option to download all links to a directory you specify, just like with the `-o` argument. The file will be saved with the filename in the link `reference#_filename.ext`
 
-On Windows in either powershell or cmd:
-
-```powershell
-python .\formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -x -X '\.png$'
-```
-
-*will return a links.txt with links to all png files in export*
-
-On Unix:
-
 ```bash
-python3 formsite_utility.py -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -D './download_03/' -X '\.jpg$'
+getform -u 'username' -t 'token' -f 'form_id' -d 'directory' -s 'server' -D './download_03/' -X '\.jpg$'
 ```
 
 *will create a directory download_03 in the same folder as formsite_utility.py and save all jpg files uploaded to the form*
