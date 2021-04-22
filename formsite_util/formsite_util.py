@@ -229,9 +229,12 @@ class FormsiteInterface:
 
     def FetchResults(self, save_results_jsons=False, save_items_json=False, refresh_items_json=False) -> None:
         """Fetches results from formsite API according to specified parameters. Updates the `self.Data` variable which stores the dataframe."""
-        items, results = self._perform_api_fetch(
-            save_results_jsons=save_results_jsons, save_items_json=save_items_json, refresh_items_json=refresh_items_json)
-        self.Data = self._assemble_dataframe(items, results)
+        if self.form_id == '':
+            raise Exception(f"Form ID is empty! You cannot call FormsiteInterface.FetchResults without specifying a valid form id.")
+        else:
+            items, results = self._perform_api_fetch(
+                save_results_jsons=save_results_jsons, save_items_json=save_items_json, refresh_items_json=refresh_items_json)
+            self.Data = self._assemble_dataframe(items, results)
 
     def ReturnResults(self, save_results_jsons=False, save_items_json=False, refresh_items_json=False) -> pd.DataFrame():
         """Returns pandas dataframe of results. If it doesnt exist yet, creates it."""
@@ -447,11 +450,8 @@ class _FormsiteProcessing:
 
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
-        try:
-            assert len(self.results_jsons[0]['results']) != 0
-        except AssertionError:
-            print("No results to process.")
-            return None
+        if len(self.results_jsons[0]['results']) == 0:
+            raise Exception(f"No results to process! FetchResults returned an empty list.")
         split_workload = self._divide_workload(self.results_jsons, cpu_count())
         with tqdm(total=len(split_workload)+5, desc='Processing results', leave=False) as pbar:
             pbar.update(1)
@@ -638,8 +638,6 @@ class _FormsiteDownloader:
             filename =f"{filename_regex.sub('', filename)}"
         return filename
         
-
-
 def GatherArguments():
     parser = argparse.ArgumentParser(
         description="Github of author: https://github.com/strny0/formsite-utility\n"
@@ -678,7 +676,7 @@ def GatherArguments():
     g_login.add_argument('-d', '--directory', type=str, default=None, required=True,
                          help="Your Formsite directory. Can be found under [Share > Links > Directory]. Required."
                          )
-    g_params.add_argument('-f', '--form', type=str, default=None, required=True,
+    g_params.add_argument('-f', '--form', type=str, default='',
                           help="Your Formsite form ID. Can be found under [Share > Links > Directory]. Mostly required."
                           )
     g_params.add_argument('--afterref', type=int, default=0,
@@ -815,7 +813,7 @@ def main():
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.6.1"
+        current_version = "1.2.6.2"
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
                 content = await r.content.read()
