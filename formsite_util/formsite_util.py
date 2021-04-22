@@ -2,6 +2,7 @@
 # Author: Jakub Strnad
 # Documentation: https://github.com/strny0/formsite-utility
 
+from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
 from pathlib import Path as Path  # s
@@ -289,7 +290,6 @@ class FormsiteInterface:
             self.ExtractLinks(links_regex=links_regex)
             self.ReturnLinks(links_regex=links_regex)
             return
-
         return self.Links
 
     def WriteLinks(self, destination_path: PathLike, links_regex=r'.+'):
@@ -453,24 +453,8 @@ class _FormsiteProcessing:
         if len(self.results_jsons[0]['results']) == 0:
             raise Exception(f"No results to process! FetchResults returned an empty list.")
         split_workload = self._divide_workload(self.results_jsons, cpu_count())
-        with tqdm(total=len(split_workload)+5, desc='Processing results', leave=False) as pbar:
-            pbar.update(1)
-
-            def _update_pbar(f):
-                pbar.update(1)
-                return f
-
-            with ProcessPoolExecutor() as executor:
-               futures = []
-               for split in split_workload:
-                   if split != []:
-                       future = executor.submit(self._process_list, split)
-                       future.add_done_callback(_update_pbar)
-                       futures.append(future)
-               wait(futures)
-               pbar.update(1)
-               final_dataframe = pd.concat((future.result() for future in futures))
-
+        with tqdm(total=len(split_workload)+5, initial=1, desc='Processing results', leave=False) as pbar:
+            final_dataframe = self._start_processing(pbar, split_workload)
             pbar.desc = "Sorting results"
             pbar.update(1)
             final_dataframe.sort_values(
@@ -478,6 +462,29 @@ class _FormsiteProcessing:
             pbar.desc = "Results processed"
             pbar.update(1)
         return final_dataframe
+
+    def _start_processing(self,pbar, split_workload):
+        def _update_pbar_callback(f):
+                pbar.update(1)
+                return f
+        try:
+            with ProcessPoolExecutor() as executor:
+               futures = []
+               for split in split_workload:
+                   if split != []:
+                       future = executor.submit(self._process_list, split)
+                       future.add_done_callback(_update_pbar_callback)
+                       futures.append(future)
+               wait(futures)
+               pbar.update(1)
+            return pd.concat((future.result() for future in futures))
+        except BrokenProcessPool:
+            with ProcessPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._process_list, self.results_jsons)
+                future.add_done_callback(_update_pbar_callback)
+                wait(future)
+                pbar.update(1)
+            return future.result()
 
     def _divide_workload(self, full_list, num_splits):
         len_split = len(full_list) // num_splits
@@ -607,7 +614,7 @@ class _FormsiteDownloader:
             filename = f"{self.download_folder}/{filename}"
             filename = self._check_if_file_exists(filename)
         else:
-            filename = f"{self.download_folder}/{filename}"    
+            filename = f"{self.download_folder}/{filename}"
         
         async with self.semaphore:
             content = await self._fetch(url, session)
