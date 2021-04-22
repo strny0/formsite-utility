@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-# Script: formsite_api.py
+# Script: formsite-util.py
 # Author: Jakub Strnad
-# Description: https://github.com/strny0/formsite-utility
-# Notes:    items - headers of the exported CSV, more specifically the part of the formsite export created by user (user controls)
-#			results - rows of the exported CSV
-#           Rate limits - formsite API allows max 2000 calls total per day or max 50 per minute, API calls will wait every time they fail for this reason (code 429)
+# Documentation: https://github.com/strny0/formsite-utility
 
 from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
@@ -820,8 +817,7 @@ if __name__ == '__main__':
         arguments.form, credentials, parameters, verbose=arguments.verbose)
 
     if arguments.version is not False:
-        current_version = "1.2.5"
-
+        current_version = "1.2.6"
         async def checkver():
             async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
                 content = await r.content.read()

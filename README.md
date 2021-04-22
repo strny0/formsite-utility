@@ -5,12 +5,15 @@ CLI tool + module for formsite automation.
 ## Overview
 
 This program performs an export of a specified formsite form with parameters
-A faster alternative to a manual export from the formsite website. It uses the formsite API v2 to perform exports of results. You can specify parametrs in commandline to filter these results. Allow afvanced features like link extraction and even download of files to a specified directory.
+A faster alternative to a manual export from the formsite website. It uses the formsite API v2 to perform exports of results. You can specify parametrs in commandline to filter these results. Allow advanced features like link extraction and even download of files to a specified directory.
 
 ### Installation
 
-You can install the required packages with:
-`pip install -r requirements.txt`
+You can install the module with
+
+`pip install formsite-util`
+
+or download it manually from releases.
 
 The required packages are:
 
@@ -278,3 +281,10 @@ You can find API related information of your specific form under:
 | 422  | Invalid parameter.                          |
 | 429  | Too many requests or too busy.              |
 | 5xx  | Unexpected internal error.                  |
+
+## License
+
+© 2021 Jakub Strnad
+
+This program is licensed under GPLv3
+Please see LICENSE.md for more details.
