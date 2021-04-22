@@ -2,13 +2,10 @@
 # Author: Jakub Strnad
 # Documentation: https://github.com/strny0/formsite-utility
 
-from concurrent.futures.process import BrokenProcessPool
 from datetime import datetime as dt  # s
 from datetime import timedelta as td  # s
 from pathlib import Path as Path  # s
 from json import loads  # s
-from concurrent.futures import ProcessPoolExecutor, wait
-from multiprocessing import cpu_count
 from aiohttp.typedefs import PathLike
 
 from time import perf_counter
@@ -452,69 +449,34 @@ class _FormsiteProcessing:
         """Return a dataframe in the same format as a regular formsite export."""
         if len(self.results_jsons[0]['results']) == 0:
             raise Exception(f"No results to process! FetchResults returned an empty list.")
-        split_workload = self._divide_workload(self.results_jsons, cpu_count())
-        with tqdm(total=len(split_workload)+5, initial=1, desc='Processing results', leave=False) as pbar:
-            final_dataframe = self._start_processing(pbar, split_workload)
-            pbar.desc = "Sorting results"
-            pbar.update(1)
+        with tqdm(total=len(self.results_jsons)+3, initial=1, desc='Processing results', leave=False) as self.pbar:
+            final_dataframe = self._process_list(self.results_jsons)
+            self.pbar.desc = "Sorting results"
+            self.pbar.update(1)
             final_dataframe.sort_values(
                 by=['Reference #'], ascending=self.sort_asc, inplace=True)
-            pbar.desc = "Results processed"
-            pbar.update(1)
+            self.pbar.desc = "Results processed"
+            self.pbar.update(1)
         return final_dataframe
 
-    def _start_processing(self,pbar, split_workload):
-        def _update_pbar_callback(f):
-                pbar.update(1)
-                return f
-        try:
-            with ProcessPoolExecutor() as executor:
-               futures = []
-               for split in split_workload:
-                   if split != []:
-                       future = executor.submit(self._process_list, split)
-                       future.add_done_callback(_update_pbar_callback)
-                       futures.append(future)
-               wait(futures)
-               pbar.update(1)
-            return pd.concat((future.result() for future in futures))
-        except BrokenProcessPool:
-            with ProcessPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(self._process_list, self.results_jsons)
-                future.add_done_callback(_update_pbar_callback)
-                wait(future)
-                pbar.update(1)
-            return future.result()
-
-    def _divide_workload(self, full_list, num_splits):
-        len_split = len(full_list) // num_splits
-        if len_split == 0:
-            return self._divide_workload(full_list[len_split:], num_splits-1)
-        elif len(full_list)-len_split > 0:
-            return [full_list[:len_split]] + self._divide_workload(full_list[len_split:], num_splits-1)
-        else:
-            return [full_list]
-
     def _process_list(self, results_jsons_split: list):
-        dataframes = []
-        for results_json in results_jsons_split:
-            dataframe = self._process_one(results_json)
-            dataframes.append(dataframe)
-        return pd.concat(dataframes)
+        dataframes = tuple(pd.DataFrame(results_json['results']) for results_json in results_jsons_split)
+        dataframe = pd.concat(dataframes)
+        dataframe = self._process_one(dataframe)
+        return dataframe
 
-    def _process_one(self, results_json: dict):
-        dataframe_in_progress = self._make_dataframe_page_hardcoded(
-            results_json)
+    def _process_one(self, dataframe_in_progress):
+        dataframe_in_progress = self._make_dataframe_page_hardcoded(dataframe_in_progress)
         items_df = pd.DataFrame(self._separate_items_single(
             dataframe_in_progress['items']), columns=self.columns)
         df_1, df_2 = self._hardcoded_columns_renaming(
             dataframe_in_progress.reset_index(drop=True))
         final_dataframe = pd.concat([df_1, items_df, df_2], axis=1)
+        self.pbar.update(1)
         return final_dataframe
 
-    def _make_dataframe_page_hardcoded(self, results_json: dict) -> pd.DataFrame:
+    def _make_dataframe_page_hardcoded(self, dataframe_in_progress) -> pd.DataFrame:
         """Creates a dataframe from a json file for hardcoded columns"""
-        dataframe_in_progress = pd.DataFrame(results_json['results'])
         dataframe_in_progress['date_update'] = dataframe_in_progress['date_update'].apply(
            lambda x: self._string2datetime(x, self.timezone_offset))
         dataframe_in_progress['date_start'] = dataframe_in_progress['date_start'].apply(
