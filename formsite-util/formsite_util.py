@@ -317,7 +317,7 @@ class FormsiteInterface:
 
     def ListColumns(self):
         """Prints list of columns (items, usercontrols) and their respective formsite IDs."""
-        api_handler = _FormsiteAPI(interface)
+        api_handler = _FormsiteAPI(self)
         api_handler.check_pages = False
         items = asyncio.get_event_loop().run_until_complete(api_handler.Start(only_items=True))
         items = pd.DataFrame(loads(items)['items'], columns=[
@@ -326,8 +326,8 @@ class FormsiteInterface:
         pd.set_option('display.max_rows', None)
         print(items)
         print('----------------')
-        print(f"Results labels: {arguments.resultslabels}")
-        print(f"Results view: {arguments.resultsview}")
+        print(f"Results labels: {self.params.resultslabels}")
+        print(f"Results view: {self.params.resultsview}")
         
 
     def WriteResults(self, destination_path: PathLike, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
@@ -796,8 +796,7 @@ def GatherArguments():
                          )
     return parser.parse_known_args()[0]
 
-
-if __name__ == '__main__':
+def main():
     t0 = perf_counter()
     arguments = GatherArguments()
     parameters = FormsiteParams(
@@ -878,3 +877,6 @@ if __name__ == '__main__':
         print("latest reference saved")
 
     print(f'done in {(perf_counter() - t0):0.2f} seconds!')
+
+if __name__ == '__main__':
+    main()
