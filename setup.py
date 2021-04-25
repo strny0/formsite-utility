@@ -20,19 +20,18 @@ setuptools.setup(
         "Bug Tracker": "https://github.com/strny0/formsite-utility/issues",
     },
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
-        "Environment :: Console",
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+        "Development Status :: 5 - Production/Stable",
+        "Topic :: Utilities",
+        "Environment :: Console",
         "Operating System :: OS Independent",
-        "Topic :: Utilities"
+        "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)"
     ],
     packages=setuptools.find_packages(),
     python_requires=">=3.6",
     entry_points={
         "console_scripts": [
-            "formsite-util=formsite_util.formsite_util:main",
-            "getform=formsite_util.formsite_util:main"
+            "getform=formsite_util.cli:main"
         ]
     }
 )

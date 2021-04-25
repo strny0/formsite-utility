@@ -170,7 +170,7 @@ class FormsiteCredentials:
         quotes_map = [('\'', ''), ('\"', '')]
         if type(argument) != str:
             raise Exception(
-                f'invalid format for argument {argument}, {argument_name}, correct example: {example}')
+                f'invalid format for argument {argument}, {argument_name}, correct example: {flag} {example}')
         argument = self._sanitize_argument(argument, quotes_map)
         return argument
 

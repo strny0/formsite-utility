@@ -2,8 +2,9 @@
 import argparse
 import asyncio
 from aiohttp import request
-from core import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from formsite_util import FormsiteParams, FormsiteCredentials, FormsiteInterface
 from time import perf_counter
+
 
 def GatherArguments():
     parser = argparse.ArgumentParser(
@@ -24,6 +25,7 @@ def GatherArguments():
                     "| 5xx  | Unexpected internal error.                  |\n",
                     formatter_class=argparse.RawTextHelpFormatter
     )
+    parser.add_argument('-V', '--version', action='version',version="1.2.6.3")
     g_login = parser.add_argument_group('Login')
     g_params = parser.add_argument_group('Results Parameters')
     g_functions = parser.add_argument_group('Functions')
@@ -43,7 +45,7 @@ def GatherArguments():
     g_login.add_argument('-d', '--directory', type=str, default=None, required=True,
                          help="Your Formsite directory. Can be found under [Share > Links > Directory]. Required."
                          )
-    g_params.add_argument('-f', '--form', type=str, default='',
+    g_params.add_argument('-f', '--form', type=str, default=None,
                           help="Your Formsite form ID. Can be found under [Share > Links > Directory]. Mostly required."
                           )
     g_params.add_argument('--afterref', type=int, default=0,
@@ -133,9 +135,6 @@ def GatherArguments():
                                "\nAny files that would be overwritten as a result of the removal of characters will be appended with _1, _2, etc.")
     g_functions.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
                              help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
-    g_nocreds.add_argument('-V', '--version', action="store_true",  default=False,
-                           help="Returns version of the script."
-                           )
     g_nocreds.add_argument('-l', '--list_columns', action="store_true",  default=False,
                            help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments."
                            "\nRequires login info and form id. Overrides all other functionality of the program."
@@ -178,30 +177,16 @@ def main():
         arguments.username, arguments.token, arguments.server, arguments.directory)
 
     with FormsiteInterface(arguments.form, credentials, parameters, verbose=arguments.verbose) as interface:
-        if arguments.version is not False:
-            current_version = "1.2.6.3"
-
-            async def checkver():
-                async with request("GET", "https://raw.githubusercontent.com/strny0/formsite-utility/main/version.md") as r:
-                    content = await r.content.read()
-                    content = content.decode('utf-8')
-                    print(f"Current version: {current_version}")
-                    print(f"Latest release: {content}")
-                if content != current_version:
-                    print('Download latest release from github:')
-                    print('https://github.com/strny0/formsite-utility')
-            asyncio.get_event_loop().run_until_complete(checkver())
-            quit()
         if arguments.list_forms is not False:
             if arguments.list_forms == 'default':
                 interface.ListAllForms(display2console=True)
             else:
                 interface.ListAllForms(display2console=True,
                                        save2csv=arguments.list_forms)
-            quit()
+            return 0
         if arguments.list_columns is not False:
             interface.ListColumns()
-            quit()
+            return 0
 
         if arguments.output_file is not False:
             interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,

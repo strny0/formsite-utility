@@ -32,9 +32,9 @@ tqdm
 
 ### Usage
 
-You can invoke the module with `getform -args` or `formsite-util -args`
+You can invoke the module with `getform [args]`
 
-You can access the help page with `getform -h`
+You can access the help page with **`getform -h`**
 
 **Required arguments:**
 
