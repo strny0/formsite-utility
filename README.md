@@ -210,7 +210,38 @@ These options overwrite the core functionality of the program.
 
 ## **Module Examples:**
 
-## TODO
+```python
+# Example functionality in your program
+from formsite_util import FormsiteInterface, FormsiteCredentials, FormsiteParams
+
+# required information is form id and access credentials
+# result parameters are optional
+form_id = 'yourFormsID'
+login = FormsiteCredentials('yourUsername','yourToken','yourServer','yourDirectory')
+my_params = FormsiteParams(afterdate='2021-04-01', timezone='America/Chicago')
+
+# you dont have to use a context manager
+# you can also use `interface = FormsiteInterface(...)`
+with FormsiteInterface(form_id, login, params=my_params) as interface:
+
+    # list all forms on account and save them to a csv
+    interface.ListAllForms(save2csv='./my_list_of_all_forms.csv')
+
+    # export form to a file
+    interface.WriteResults('./my_results.csv')
+
+    # download all files submitted to your form
+    interface.DownloadFiles('./dl_folder/', max_concurrent_downloads = 100, overwrite_existing=False)
+
+    # dowloaded files' filenames will only have characters that match the regex
+    interface.DownloadFIles('./dl_folder2/', filename_regex=r'[^A-Za-z0-9\_\-]+')
+
+    # extract all links to files that match a regex
+    json_files_in_form = interface.ReturnLinks(links_regex=r'\.json$')
+
+    # export results to pandas dataframe
+    my_form_as_dataframe = interface.ReturnResults()
+```
 
 ## Notes
 

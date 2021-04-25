@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as reader:
 
 setuptools.setup(
     name="formsite-util",
-    version="1.2.6.2",
+    version="1.2.6.3",
     author="Jakub Strnad",
     author_email="jakub.strnad@protonmail.com",
     description="A simple Formsite API python script, used to get results or to download files from your formsite forms.",
@@ -25,6 +25,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Operating System :: OS Independent",
+        "Topic :: Utilities"
     ],
     packages=setuptools.find_packages(),
     python_requires=">=3.6",
