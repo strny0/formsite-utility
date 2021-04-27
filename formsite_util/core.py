@@ -89,26 +89,26 @@ class FormsiteParams:
 
     def __shift_param_date__(self, date, timezone_offset) -> str:
         try:
-            date = date - timezone_offset
+            date = date + timezone_offset
         except:
             try:
                 date = dt.strptime(date, "%Y-%m-%dT%H:%M:%SZ")
-                date = date - timezone_offset
+                date = date + timezone_offset
             except:
                 try:
                     date = dt.strptime(date, "%Y-%m-%d")
-                    date = date - timezone_offset
+                    date = date + timezone_offset
                 except:
                     try:
                         date = dt.strptime(date, "%Y-%m-%d %H:%M:%S")
-                        date = date - timezone_offset
+                        date = date + timezone_offset
                     except:
                         raise Exception(
                             'invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS')
         date = dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
         return date
 
-    def _calculate_tz_offset(self, timezone) -> tuple[td, dt]:
+    def _calculate_tz_offset(self, timezone):
         """Converts input timezone (offset from local or tz databse name) to an offset relative to local timezone."""
         local_date = dt.now()
         utc_date = dt.utcnow()
