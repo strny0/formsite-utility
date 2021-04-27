@@ -2,8 +2,9 @@
 import argparse
 import asyncio
 from aiohttp import request
-from formsite_util import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
 from time import perf_counter
+
 
 
 def GatherArguments():
@@ -25,7 +26,7 @@ def GatherArguments():
                     "| 5xx  | Unexpected internal error.                  |\n",
                     formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version',version="1.2.6.3")
+    parser.add_argument('-V', '--version', action='version',version="1.2.6.4")
     g_login = parser.add_argument_group('Login')
     g_params = parser.add_argument_group('Results Parameters')
     g_functions = parser.add_argument_group('Functions')
@@ -176,7 +177,7 @@ def main():
     credentials = FormsiteCredentials(
         arguments.username, arguments.token, arguments.server, arguments.directory)
 
-    with FormsiteInterface(arguments.form, credentials, parameters, verbose=arguments.verbose) as interface:
+    with FormsiteInterface(arguments.form, credentials, params=parameters, verbose=arguments.verbose) as interface:
         if arguments.list_forms is not False:
             if arguments.list_forms == 'default':
                 interface.ListAllForms(display2console=True)

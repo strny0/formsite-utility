@@ -111,6 +111,8 @@ class FormsiteParams:
     def _calculate_tz_offset(self, timezone) -> tuple[td, dt]:
         """Converts input timezone (offset from local or tz databse name) to an offset relative to local timezone."""
         local_date = dt.now()
+        utc_date = dt.utcnow()
+        utc_offset =  local_date - utc_date
         if search(r'(\+|\-|)([01]?\d|2[0-3])([0-5]\d)', timezone) is not None:
             inp = timezone.replace("'", "")
             inp = [inp[:2], inp[2:]] if len(inp) == 4 else [inp[:3], inp[3:]]
@@ -125,8 +127,8 @@ class FormsiteParams:
                     local_date).strftime("%z")
                 inp = [inp[:2], inp[2:]] if len(inp) == 4 else [
                     inp[:3], inp[3:]]
-                offset_from_local = td(
-                    hours=int(inp[0]), seconds=int(inp[1])/60)
+                inp_td = td(hours=int(inp[0]), seconds=int(inp[1])/60).total_seconds()
+                offset_from_local = td(seconds=(inp_td - utc_offset.total_seconds()))
             except:
                 raise Exception("Invalid timezone format provided")
         elif timezone == 'local':
@@ -537,7 +539,7 @@ class _FormsiteProcessing:
         """Converts ISO datetime string to datetime class"""
         try:
             new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%S"+"Z")
-            new_date = new_date - timezone_offset
+            new_date = new_date + timezone_offset
             return new_date
         except:
             return old_date
