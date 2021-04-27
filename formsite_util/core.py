@@ -587,13 +587,16 @@ class _FormsiteDownloader:
             filenames_in_dir.add(url+file)
         return filenames_in_dir
 
-    async def _fetch(self, url, session):
+    async def _fetch(self, url, session, recursion_level= 0):
+        if recursion_level > 20:
+            print(f"Error downloading {url}")
+            return None
         try:
             async with session.get(url) as response:
                 response.raise_for_status()
                 return await response.read()
         except:
-            resp = await self._fetch(url, session)
+            resp = await self._fetch(url, session,recursion_level=recursion_level+1)
             return resp
 
     async def _write(self, content, filename):
