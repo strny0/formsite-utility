@@ -582,7 +582,7 @@ class _FormsiteDownloader:
         self.failed_downloads = []
         self.active_workers = self.max_concurrent_downloads
         if self.overwrite_existing == False and len(self.links) > 0:
-            url = self.links[0].rsplit('/',1)[0]
+            url = list(self.links)[0].rsplit('/',1)[0]
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
             self.links = set(self.links) - filenames_in_dl_dir
 
