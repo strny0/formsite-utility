@@ -112,7 +112,7 @@ class FormsiteParams:
         """Converts input timezone (offset from local or tz databse name) to an offset relative to local timezone."""
         local_date = dt.now()
         utc_date = dt.utcnow()
-        utc_offset =  local_date - utc_date
+        utc_offset = local_date - utc_date
         if search(r'(\+|\-|)([01]?\d|2[0-3])([0-5]\d)', timezone) is not None:
             inp = timezone.replace("'", "")
             inp = [inp[:2], inp[2:]] if len(inp) == 4 else [inp[:3], inp[3:]]
@@ -127,8 +127,10 @@ class FormsiteParams:
                     local_date).strftime("%z")
                 inp = [inp[:2], inp[2:]] if len(inp) == 4 else [
                     inp[:3], inp[3:]]
-                inp_td = td(hours=int(inp[0]), seconds=int(inp[1])/60).total_seconds()
-                offset_from_local = td(seconds=(inp_td - utc_offset.total_seconds()))
+                inp_td = td(hours=int(inp[0]), seconds=int(
+                    inp[1])/60).total_seconds()
+                offset_from_local = td(
+                    seconds=(inp_td - utc_offset.total_seconds()))
             except:
                 raise Exception("Invalid timezone format provided")
         elif timezone == 'local':
@@ -141,17 +143,18 @@ class FormsiteParams:
     def getItemsHeader(self) -> dict:
         return {"results_labels": self.resultslabels}
 
+
 @dataclass
 class FormsiteCredentials:
     """Class which represents your user credentials for accessing the formsite API."""
     username: str
-    token:str
-    server:str
-    directory:str
+    token: str
+    server: str
+    directory: str
 
     def __post_init__(self):
         self.confirm_validity()
-        
+
     def getAuthHeader(self) -> dict:
         """Returns a dictionary sent as a header in the API request for authorization purposes."""
         return {"Authorization": f"{self.username} {self.token}", "Accept": "application/json"}
@@ -181,6 +184,7 @@ class FormsiteCredentials:
         for k, v in chars2remove:
             argument = str(argument).replace(k, v)
         return argument
+
 
 @dataclass
 class FormsiteInterface:
@@ -268,7 +272,8 @@ class FormsiteInterface:
             try:
                 for item in set(filter(lambda x: x.startswith(self.url_files), self.Data[col])):
                     if links_regex.search(item) is not None:
-                                [self.Links.add(link) for link in item.split(' | ') if link != '']
+                        [self.Links.add(link)
+                         for link in item.split(' | ') if link != '']
             except AttributeError:
                 pass
 
@@ -316,7 +321,7 @@ class FormsiteInterface:
             sorted_links.sort(reverse=sort_descending)
             writer.writelines(sorted_links)
 
-    def DownloadFiles(self, download_folder: str, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True) -> None:
+    def DownloadFiles(self, download_folder: str, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True, report_downloads=False, timeout=30, retries=3) -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
         if self.Links is None:
             self.ExtractLinks(links_regex=links_regex)
@@ -326,7 +331,7 @@ class FormsiteInterface:
 
         download_folder = self._validate_path(download_folder, is_folder=True)
         download_handler = _FormsiteDownloader(
-            download_folder, self.Links, max_concurrent_downloads, overwrite_existing=overwrite_existing, filename_regex=filename_regex)
+            download_folder, self.Links, max_concurrent_downloads, overwrite_existing=overwrite_existing, filename_regex=filename_regex, report_downloads=report_downloads, timeout=timeout, retries=retries)
         asyncio.get_event_loop().run_until_complete(download_handler.Start())
 
     def ListColumns(self):
@@ -372,12 +377,13 @@ class FormsiteInterface:
         with open(output_file, 'w') as writer:
             writer.write(latest_ref)
 
+
 @dataclass
 class _FormsiteAPI:
     interface: FormsiteInterface
     save_results_jsons: bool = False
-    save_items_json:bool = False
-    refresh_items_json:bool = False
+    save_items_json: bool = False
+    refresh_items_json: bool = False
 
     def __post_init__(self):
         self.paramsHeader = self.interface.paramsHeader
@@ -452,16 +458,18 @@ class _FormsiteAPI:
         self.pbar.update(1)
         return content.decode('utf-8')
 
+
 @dataclass
 class _FormsiteProcessing:
-    items:str
+    items: str
     results: Iterable[str]
     interface: FormsiteInterface
-    sort_asc:bool = False
+    sort_asc: bool = False
 
     def __post_init__(self):
         self.items_json = loads(self.items)
-        self.results_jsons = [loads(results_page) for results_page in self.results]
+        self.results_jsons = [loads(results_page)
+                              for results_page in self.results]
         self.timezone_offset = self.interface.params.timezone_offset
         self.columns = self._generate_columns()
 
@@ -554,32 +562,75 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
 
+
 @dataclass
 class _FormsiteDownloader:
     download_folder: str
     links: Iterable[str]
     max_concurrent_downloads: int = 10
+    timeout: int = 30
+    retries: int = 3
     overwrite_existing: bool = True
+    report_downloads: bool = False
     filename_regex: str = r''
 
     def __post_init__(self):
         self.filename_regex = compile(self.filename_regex)
         self.semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        self.dl_queue = asyncio.Queue()
+        self.status = []
+        self.failed_downloads = []
         if self.overwrite_existing == False:
             url = ''
             for i in tuple(self.links)[0].split('/')[:-1]:
                 url += i + '/'
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
-            self.links = self.links - filenames_in_dl_dir
+            self.links = set(self.links) - filenames_in_dl_dir
 
     async def Start(self):
         """Starts download of links."""
-        async with ClientSession(connector=TCPConnector(limit=None)) as session:
+        async with ClientSession(connector=TCPConnector(limit=None), timeout=ClientTimeout(total=self.timeout)) as session:
             with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=False) as self.pbar:
-                tasks = (asyncio.create_task(self._download(
-                    link, session, self.filename_regex)) for link in self.links)
-                await asyncio.gather(*tasks)
+                [self.dl_queue.put_nowait((link, session, 1))
+                 for link in self.links]
+                tasks = [asyncio.create_task(self.worker(
+                    self.dl_queue, self.semaphore)) for _ in range(self.max_concurrent_downloads)]
+                await self.dl_queue.join()
+                [task.cancel() for task in tasks]
                 self.pbar.desc = "Download complete"
+        if len(self.failed_downloads) > 0:
+            with open('./failed_downloads.txt', 'w') as writer:
+                writer.writelines(self.failed_downloads)
+            print(
+                f"{len(self.failed_downloads)} files failed to download, please see failed_downloads.txt for more info")
+        if self.report_downloads == True:
+            with open('./downloads_status.txt', 'w') as writer:
+                for i in self.status:
+                    writer.write(f"{i[0]} ; {i[1]}\n")
+
+    async def worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
+        while True:
+            if len(self.status) >= len(self.links):
+                break
+            url, session, attempt = await queue.get()
+            try:
+                await semaphore.acquire()
+                r = await self._download(url, session)
+                if r == 0:
+                    self.pbar.update(1)
+                    queue.task_done()
+                    self.status.append([url, 'complete'])
+            except Exception as e:
+                print(f"Retry {attempt}/{self.retries} Exception: {e}")
+                if attempt < self.retries:
+                    queue.put_nowait((url, session, (attempt+1)))
+                else:
+                    queue.task_done()
+                    self.status.append([url, 'error'])
+                    self.failed_downloads.append(url+'\n')
+            semaphore.release()
+            if len(self.status) >= len(self.links):
+                break
 
     def _list_files_in_download_dir(self, url: str) -> set:
         filenames_in_dir = set()
@@ -587,35 +638,30 @@ class _FormsiteDownloader:
             filenames_in_dir.add(url+file)
         return filenames_in_dir
 
-    async def _fetch(self, url, session, recursion_level= 0):
-        if recursion_level > 20:
-            print(f"Error downloading {url}")
-            return None
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.read()
-        except:
-            resp = await self._fetch(url, session,recursion_level=recursion_level+1)
-            return resp
+    async def _fetch(self, url: str, session: ClientSession):
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.read()
 
-    async def _write(self, content, filename):
+    async def _write(self, content: bytes, filename: str):
         async with aiopen(filename, "wb") as writer:
             await writer.write(content)
 
-    async def _download(self, url, session, filename_regex):
+    async def _download(self, url: str, session: ClientSession):
+        content = await self._fetch(url, session)
+        filename = self.get_filename(url)
+        await self._write(content, filename)
+        return 0
+
+    def get_filename(self, url):
         filename = f"{url.split('/')[-1:][0]}"
-        if filename_regex.pattern != '':
-            filename = self._regex_substitution(filename, filename_regex)
+        if self.filename_regex.pattern != '':
+            filename = self._regex_substitution(filename, self.filename_regex)
             filename = f"{self.download_folder}/{filename}"
             filename = self._check_if_file_exists(filename)
         else:
             filename = f"{self.download_folder}/{filename}"
-
-        async with self.semaphore:
-            content = await self._fetch(url, session)
-            await self._write(content, filename)
-            self.pbar.update(1)
+        return filename
 
     def _check_if_file_exists(self, filename, n=0) -> str:
         path = Path(filename).resolve()

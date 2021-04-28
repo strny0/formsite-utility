@@ -32,7 +32,11 @@ tqdm
 
 ### Usage
 
-You can invoke the module with `getform [args]`
+You can invoke the module with `getform [args]` (if it's in your path)
+
+or `py -m formsite_util.cli`
+
+or `python3 -m formsite_util.cli`
 
 You can access the help page with **`getform -h`**
 
