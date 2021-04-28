@@ -135,11 +135,11 @@ def GatherArguments():
                                "\nAny files that would be overwritten as a result of the removal of characters will be appended with _1, _2, etc.")
     g_functions.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
                              help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
-    g_functions.add_argument('--timeout',  nargs=1,  default=30, type=int,
+    g_func_params.add_argument('--timeout',  nargs=1,  default=80, type=int,
                              help="Timeout in seconds for when you are downloading files. Defaults to 30.")
-    g_functions.add_argument('--retries',  nargs=1,  default=3, type=int,
+    g_func_params.add_argument('--retries',  nargs=1,  default=3, type=int,
                              help="Number of times to retry downloading files if the download fails. Defaults to 3.")
-    g_functions.add_argument('--get_download_status', default=False, action='store_true',
+    g_func_params.add_argument('--get_download_status', default=False, action='store_true',
                              help="If you enable this option, a text file with status for each downloaded link will be saved (complete or incomplete).")
     g_nocreds.add_argument('-l', '--list_columns', action="store_true",  default=False,
                            help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments."

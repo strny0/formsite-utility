@@ -561,8 +561,6 @@ class _FormsiteProcessing:
         main_df_part2.columns = ['Date', 'Start Time', 'Finish Time',
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
-
-
 @dataclass
 class _FormsiteDownloader:
     download_folder: str
@@ -580,6 +578,7 @@ class _FormsiteDownloader:
         self.dl_queue = asyncio.Queue()
         self.status = []
         self.failed_downloads = []
+        self.active_workers = 0
         if self.overwrite_existing == False:
             url = ''
             for i in tuple(self.links)[0].split('/')[:-1]:
@@ -612,6 +611,8 @@ class _FormsiteDownloader:
         while True:
             if len(self.status) >= len(self.links):
                 break
+            if self.active_workers > len(self.links) - len(self.status):
+                break
             url, session, attempt = await queue.get()
             try:
                 await semaphore.acquire()
@@ -620,17 +621,23 @@ class _FormsiteDownloader:
                     self.pbar.update(1)
                     queue.task_done()
                     self.status.append([url, 'complete'])
+            except TimeoutError:
+                #print(f"Retry {attempt}/{self.retries} Timed out: {url} Try increasing --timeout ")
+                await self._handle_error(url,session,attempt,queue, e)
             except Exception as e:
-                print(f"Retry {attempt}/{self.retries} Exception: {e}")
-                if attempt < self.retries:
-                    queue.put_nowait((url, session, (attempt+1)))
-                else:
-                    queue.task_done()
-                    self.status.append([url, 'error'])
-                    self.failed_downloads.append(url+'\n')
+                #print(f"Retry {attempt}/{self.retries} Exception: {e.__class__} {e}")
+                await self._handle_error(url,session,attempt,queue, e)
             semaphore.release()
             if len(self.status) >= len(self.links):
                 break
+
+    async def _handle_error(self, url, session, attempt, queue, exception):
+        if attempt < self.retries:
+            queue.put_nowait((url, session, (attempt+1)))
+        else:
+            queue.task_done()
+            self.status.append([url, f"{exception.__class__} {exception}"])
+            self.failed_downloads.append(url+'\n')
 
     def _list_files_in_download_dir(self, url: str) -> set:
         filenames_in_dir = set()
@@ -638,20 +645,27 @@ class _FormsiteDownloader:
             filenames_in_dir.add(url+file)
         return filenames_in_dir
 
-    async def _fetch(self, url: str, session: ClientSession):
+    async def _fetch(self, url: str, session: ClientSession, filename:str, chunk_size:int = 4*1024):
         async with session.get(url) as response:
+            #print(f" {response.status} | downloading {url}")
             response.raise_for_status()
-            return await response.read()
+            async with aiopen(filename, "wb") as writer:
+                while True:
+                    chunk = await response.content.read(chunk_size)
+                    await writer.write(chunk)
+                    if not chunk:
+                        break
+        return 0
 
-    async def _write(self, content: bytes, filename: str):
-        async with aiopen(filename, "wb") as writer:
-            await writer.write(content)
+    # async def _write(self, content: bytes, filename: str):
+    #     async with aiopen(filename, "wb") as writer:
+    #         await writer.write(content)
 
     async def _download(self, url: str, session: ClientSession):
-        content = await self._fetch(url, session)
         filename = self.get_filename(url)
-        await self._write(content, filename)
-        return 0
+        exit_code = await self._fetch(url, session,filename)
+        # await self._write(content, filename)
+        return exit_code
 
     def get_filename(self, url):
         filename = f"{url.split('/')[-1:][0]}"
