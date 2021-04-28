@@ -11,12 +11,12 @@ import os
 from pytz import timezone as pytztimezone
 from regex import search, compile
 import asyncio
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, request
+from aiohttp import ClientSession, ClientTimeout, TCPConnector, request, ClientResponseError, InvalidURL
 from aiofiles import open as aiopen
 import pandas as pd
 import openpyxl
 from dataclasses import dataclass
-
+import shutil
 
 @dataclass
 class FormsiteParams:
@@ -562,6 +562,7 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
         return main_df_part1, main_df_part2
 
+
 @dataclass
 class _FormsiteDownloader:
     download_folder: str
@@ -580,10 +581,8 @@ class _FormsiteDownloader:
         self.status = []
         self.failed_downloads = []
         self.active_workers = self.max_concurrent_downloads
-        if self.overwrite_existing == False:
-            url = ''
-            for i in tuple(self.links)[0].split('/')[:-1]:
-                url += i + '/'
+        if self.overwrite_existing == False and len(self.links) > 0:
+            url = self.links[0].rsplit('/',1)[0]
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
             self.links = set(self.links) - filenames_in_dl_dir
 
@@ -602,17 +601,21 @@ class _FormsiteDownloader:
             with open('./failed_downloads.txt', 'w') as writer:
                 writer.writelines(self.failed_downloads)
             print(
-                f"{len(self.failed_downloads)} files failed to download, please see failed_downloads.txt for more info")
+                f"{len(self.failed_downloads)} files failed to download, please see failed_downloads.txt for more info\n if the error is not 403, try increasing timeout or reducing max concurrent downloads")
         if self.report_downloads == True:
             with open('./downloads_status.txt', 'w') as writer:
                 for i in self.status:
                     writer.write(f"{i[0]} ; {i[1]}\n")
 
+    def try_exit(self):
+        if len(self.status) >= len(self.links):
+            return True
+        if self.active_workers > len(self.links) - len(self.status):
+            return True
+
     async def worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
         while not queue.empty():
-            if len(self.status) >= len(self.links):
-                break
-            if self.active_workers > len(self.links) - len(self.status):
+            if self.try_exit():
                 break
             url, session, attempt = await queue.get()
             try:
@@ -622,23 +625,38 @@ class _FormsiteDownloader:
                     self.pbar.update(1)
                     queue.task_done()
                     self.status.append([url, 'complete'])
-            except TimeoutError:
-                #print(f"Retry {attempt}/{self.retries} Timed out: {url} Try increasing --timeout ")
-                await self._handle_error(url,session,attempt,queue, e)
             except Exception as e:
-                #print(f"Retry {attempt}/{self.retries} Exception: {e.__class__} {e}")
+                self.pbar.desc = f"{e}"
                 await self._handle_error(url,session,attempt,queue, e)
-            semaphore.release()
+                self.pbar.desc = "Downloading files"
+            finally:
+                semaphore.release()
+                if self.try_exit():
+                    break
         self.active_workers -= 1
 
-    async def _handle_error(self, url: str, session: ClientSession, attempt: int, queue: asyncio.Queue, exception: Exception):
-        if attempt < self.retries:
-            queue.put_nowait((url, session, (attempt+1)))
-        else:
-            queue.task_done()
-            self.status.append([url, f"{exception.__class__} {exception}"])
-            self.failed_downloads.append(url+'\n')
+    async def _log_status_and_stop(self, queue, exception, url):
+        queue.task_done()
+        self.status.append([url, f"{exception.__class__} {exception}"])
+        self.failed_downloads.append(url+'\n')
+        self.pbar.update(1)
+
+    async def _retry(self, queue, session, attempt, url):
+        queue.put_nowait((url, session, (attempt+1)))
         await asyncio.sleep(0.1)
+
+    async def _handle_error(self, url: str, session: ClientSession, attempt: int, queue: asyncio.Queue, exception: Exception):
+        if type(exception) is ClientResponseError:
+            if exception.status == 403:
+                await self._log_status_and_stop(queue, exception, url)
+            else:
+                await self._retry(queue, session, attempt, url)
+        elif type(exception) is InvalidURL:
+            await self._log_status_and_stop(queue, exception, url)
+        elif attempt < self.retries:
+            await self._retry(queue, session, attempt, url)
+        else:
+            await self._log_status_and_stop(queue, exception, url)
 
     def _list_files_in_download_dir(self, url: str) -> set:
         filenames_in_dir = set()
@@ -646,45 +664,34 @@ class _FormsiteDownloader:
             filenames_in_dir.add(url+file)
         return filenames_in_dir
 
-    async def _fetch(self, url: str, session: ClientSession, filename:str, chunk_size:int = 4*1024):
+    async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024):
         async with session.get(url) as response:
             #print(f" {response.status} | downloading {url}")
             response.raise_for_status()
             size = int(response.headers.get('content-length', 0)) or None
-            progressbar = tqdm(
-            desc=filename, total=size, leave=False, unit='b', unit_scale=True, )
-            async with aiopen(filename+'.tmp', "wb") as writer:
-                async for chunk in response.content.iter_chunked(chunk_size):
-                    await writer.write(chunk)
-                    progressbar.update(len(chunk))
-            progressbar.close()
-            shutil.move(filename+'.tmp', filename)
-                #while True:
-                #    chunk = await response.content.read(chunk_size)
-                #    await writer.write(chunk)
-                #    if not chunk:
-                #        break
+            with tqdm(desc=filename, total=size, leave=False, unit='b', unit_scale=True, unit_divisor=1024, dynamic_ncols=True) as pbar:
+                async with aiopen(target+'.tmp', "wb") as writer:
+                    async for chunk in response.content.iter_chunked(chunk_size):
+                        await writer.write(chunk)
+                        pbar.update(len(chunk))
+            shutil.move(target+'.tmp', target)
         return 0
 
-    # async def _write(self, content: bytes, filename: str):
-    #     async with aiopen(filename, "wb") as writer:
-    #         await writer.write(content)
 
     async def _download(self, url: str, session: ClientSession):
-        filename = self.get_filename(url)
-        exit_code = await self._fetch(url, session,filename)
-        # await self._write(content, filename)
+        filename, target = self.get_filename(url)
+        exit_code = await self._fetch(url, session,filename, target)
         return exit_code
 
     def get_filename(self, url):
         filename = f"{url.split('/')[-1:][0]}"
         if self.filename_regex.pattern != '':
             filename = self._regex_substitution(filename, self.filename_regex)
-            filename = f"{self.download_folder}/{filename}"
-            filename = self._check_if_file_exists(filename)
+            target = f"{self.download_folder}/{filename}"
+            target = self._check_if_file_exists(target)
         else:
-            filename = f"{self.download_folder}/{filename}"
-        return filename
+            target = f"{self.download_folder}/{filename}"
+        return filename, target
 
     def _check_if_file_exists(self, filename, n=0) -> str:
         path = Path(filename).resolve()
@@ -709,3 +716,4 @@ class _FormsiteDownloader:
         except:
             filename = f"{filename_regex.sub('', filename)}"
         return filename
+
