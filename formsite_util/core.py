@@ -286,8 +286,8 @@ class FormsiteInterface:
             for row in d:
                 for val in row["stats"]:
                     row[val] = row['stats'][val]
-            forms_df = pd.DataFrame(
-                d, columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
+            forms_df = pd.DataFrame(d, columns=['name', 'state', 'form id', 'resultsCount', 'filesSize'])
+            forms_df = forms_df[['name', 'state', 'resultsCount', 'filesSize', 'form id']]
             forms_df.sort_values(by=['name'], inplace=True)
             forms_df.reset_index(inplace=True, drop=True)
             return forms_df
@@ -421,15 +421,15 @@ class _FormsiteAPI:
                     self.pbar.set_description("Fetching items")
                     items = await self.fetch_items()
                     self.pbar.set_description("API calls complete")
+        results.remove(None) if None in results else 0
         return items, results
 
     async def fetch_results(self, params:dict, page:int) -> str:
         content = await self.fetch_content(self.results_url, params, page=page)
         if self.save_results_jsons:
             await self.write_content(f'./results_{self.form_id}_{page}.json', content)
-        self.pbar.set_description(f"Fethching page {params['page']}")
         self.pbar.update(1)
-        return content.decode('utf-8')
+        return content
 
     async def write_content(self, filename, content) -> None:
         async with aiopen(filename, 'wb') as writer:
@@ -441,24 +441,32 @@ class _FormsiteAPI:
         async with self.session.get(url, params=params) as response:
             content = await response.content.read()
             if response.status != 200:
-                self.pbar.desc = "Reached rate limit, waiting 60 seconds"
+                self.pbar.set_description(f"Error {response.status}")
                 if response.status == 429:
+                    self.pbar.set_description("Reached rate limit, waiting 60 seconds")
                     await asyncio.sleep(60)
-                    self.pbar.desc = "Fetching results"
+                    self.pbar.set_description("Fetching items")
                     content = await self.fetch_content(url, params, page=page)
                 else:
-                    response.raise_for_status()
+                    try:
+                        response.raise_for_status()
+                    except ClientResponseError as e:
+                        print(f" {response.status} | {content.decode('utf-8', errors='ignore')}")
+                        raise e
             if self.check_pages == True:
                 self.total_pages = int(response.headers['Pagination-Page-Last'])
                 self.check_pages = False
-        return content
+        try:
+            return content.decode('utf-8')
+        except AttributeError:
+            return content
 
     async def fetch_items(self) -> str:
         content = await self.fetch_content(self.items_url, self.itemsHeader)
         if self.save_items_json:
             await self.write_content(f'./items_{self.form_id}.json', content)
         self.pbar.update(1)
-        return content.decode('utf-8')
+        return content
 
 
 @dataclass
@@ -470,8 +478,7 @@ class _FormsiteProcessing:
 
     def __post_init__(self):
         self.items_json = loads(self.items)
-        self.results_jsons = [loads(results_page)
-                              for results_page in self.results]
+        self.results_jsons = [loads(results_page) for results_page in self.results]
         self.timezone_offset = self.interface.params.timezone_offset
         self.columns = self._generate_columns()
 
@@ -614,7 +621,7 @@ class _FormsiteDownloader:
             return True
         if self.active_workers > len(self.links) - len(self.status):
             return True
-
+            
     async def worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
         while not queue.empty():
             if self.try_exit():
@@ -666,17 +673,20 @@ class _FormsiteDownloader:
             filenames_in_dir.add(url+file)
         return filenames_in_dir
 
-    async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024):
+    async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024, in_progress_ext='.tmp'):
         async with session.get(url) as response:
             #print(f" {response.status} | downloading {url}")
             response.raise_for_status()
             size = int(response.headers.get('content-length', 0)) or None
-            with tqdm(desc=filename, total=size, leave=False, unit='b', unit_scale=True, unit_divisor=1024, dynamic_ncols=True) as pbar:
-                async with aiopen(target+'.tmp', "wb") as writer:
-                    async for chunk in response.content.iter_chunked(chunk_size):
-                        await writer.write(chunk)
-                        pbar.update(len(chunk))
-            shutil.move(target+'.tmp', target)
+            with tqdm(desc=filename, total=size, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
+                try:
+                    async with aiopen(target+in_progress_ext, "wb") as writer:
+                        async for chunk in response.content.iter_chunked(chunk_size):
+                            await writer.write(chunk)
+                            pbar.update(len(chunk))
+                except KeyboardInterrupt:
+                    pbar.close()
+            shutil.move(target+in_progress_ext, target)
         return 0
 
 
