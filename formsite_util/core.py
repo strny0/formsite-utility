@@ -400,33 +400,34 @@ class _FormsiteAPI:
 
     async def Start(self, only_items=False):
         """Performs all API calls to formsite servers asynchronously"""
-        async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None)) as self.session:
+        async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None), connector=TCPConnector(limit=None)) as self.session:
             with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=False) as self.pbar:
                 if only_items:
                     items = await self.fetch_items()
                     self.pbar.update(1)
                     return items
                 else:
-                    self.pbar.desc = "Fetching results"
+                    self.pbar.set_description("Fetching results")
                     results = []
-                    first = await self.fetch_results(1)
+                    first = await self.fetch_results(self.paramsHeader, 1)
                     results.append(first)
                     if self.total_pages > 1:
+                        tasks = []
                         self.pbar.total = self.total_pages
-                        tasks = set([self.fetch_results(page)
-                                     for page in range(2, self.total_pages+1)])
-                        [results.append(res) for res in [await t for t in asyncio.as_completed(tasks)]]
-                    self.pbar.desc = "Fetching items"
+                        for page in range(2,self.total_pages+1):
+                            tasks.append(asyncio.ensure_future(self.fetch_results(self.paramsHeader, page)))
+                    completed_tasks = await asyncio.gather(*tasks)
+                    results += completed_tasks
+                    self.pbar.set_description("Fetching items")
                     items = await self.fetch_items()
-                    self.pbar.desc = "API calls complete"
+                    self.pbar.set_description("API calls complete")
         return items, results
 
-    async def fetch_results(self, page) -> str:
-        params = self.paramsHeader
-        params['page'] = page
-        content = await self.fetch_content(self.results_url, params)
+    async def fetch_results(self, params:dict, page:int) -> str:
+        content = await self.fetch_content(self.results_url, params, page=page)
         if self.save_results_jsons:
             await self.write_content(f'./results_{self.form_id}_{page}.json', content)
+        self.pbar.set_description(f"Fethching page {params['page']}")
         self.pbar.update(1)
         return content.decode('utf-8')
 
@@ -434,21 +435,22 @@ class _FormsiteAPI:
         async with aiopen(filename, 'wb') as writer:
             await writer.write(content)
 
-    async def fetch_content(self, url, params) -> bytes:
+    async def fetch_content(self, url, params, page=None) -> bytes:
+        if page is not None:
+            params['page'] = page
         async with self.session.get(url, params=params) as response:
-            if self.check_pages == True:
-                self.total_pages = int(
-                    response.headers['Pagination-Page-Last'])
-                self.check_pages = False
             content = await response.content.read()
             if response.status != 200:
                 self.pbar.desc = "Reached rate limit, waiting 60 seconds"
                 if response.status == 429:
                     await asyncio.sleep(60)
                     self.pbar.desc = "Fetching results"
-                    content = await self.fetch_content(url, params)
+                    content = await self.fetch_content(url, params, page=page)
                 else:
                     response.raise_for_status()
+            if self.check_pages == True:
+                self.total_pages = int(response.headers['Pagination-Page-Last'])
+                self.check_pages = False
         return content
 
     async def fetch_items(self) -> str:
