@@ -1,5 +1,7 @@
 # Formsite Utility
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/012df77b233b4705870b987ff2b2fd7d)](https://app.codacy.com/gh/strny0/formsite-utility?utm_source=github.com&utm_medium=referral&utm_content=strny0/formsite-utility&utm_campaign=Badge_Grade_Settings)
+
 CLI tool + module for formsite automation.
 
 ## Overview
