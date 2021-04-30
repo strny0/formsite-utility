@@ -23,7 +23,7 @@ def GatherArguments():
                     "| 5xx  | Unexpected internal error.                  |\n",
                     formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version', version="1.2.7.5")
+    parser.add_argument('-V', '--version', action='version', version="1.2.7.6")
     g_login = parser.add_argument_group('Login')
     g_params = parser.add_argument_group('Results Parameters')
     g_functions = parser.add_argument_group('Functions')

@@ -5,18 +5,18 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 from pathlib import Path
 from json import loads
-from typing import Any, Iterable
-from tqdm.asyncio import tqdm
-import os
+from typing import Any
 from pytz import timezone as pytztimezone
 from regex import search, compile
 import asyncio
-from aiohttp import ClientSession, ClientTimeout, TCPConnector, request, ClientResponseError, InvalidURL
+from aiohttp import request
 from aiofiles import open as aiopen
 import pandas as pd
 import openpyxl
 from dataclasses import dataclass
-import shutil
+from formsite_util.downloader import _FormsiteDownloader
+from formsite_util.processing import _FormsiteProcessing
+from formsite_util.api import _FormsiteAPI
 
 @dataclass
 class FormsiteParams:
@@ -259,20 +259,23 @@ class FormsiteInterface:
                               save_items_json=save_items_json, refresh_items_json=refresh_items_json)
         return self.Data
 
-    def ExtractLinks(self, links_regex=r'.+') -> None:
+    def ExtractLinks(self, links_filter_regex=r'.+') -> None:
         """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
-        links_regex = compile(links_regex)
+        links_filter_regex = compile(links_filter_regex)
         if self.Data is None:
             self.FetchResults()
         self.Links = set()
-        for col in self.Data.columns:
-            try:
-                for item in set(filter(lambda x: x.startswith(self.url_files), self.Data[col])):
-                    if links_regex.search(item) is not None:
-                        [self.Links.add(link)
-                         for link in item.split(' | ') if link != '']
-            except AttributeError:
-                pass
+        # iter through self.Data columns, for each column cast to string, extract regex if it exists, unstack into dataframes and concat them all, then iterate through it and find links
+        unproc_links = pd.concat([col.astype(str).str.extractall(f'(https\:\/\/{self.login.server}\.formsite\.com\/{self.login.directory}\/files\/.*)').unstack() for name, col in self.Data.items()])
+        for i, item in unproc_links.iteritems():
+            for o in item.to_list():
+                try:
+                    if links_filter_regex.search(o) is not None:
+                        [self.Links.add(link) for link in o.split(' | ') if link != '']
+                except TypeError:
+                    pass
+                except AttributeError:
+                    pass
 
     async def _list_all_forms(self):
         url_forms = f"{self.url_base}/forms"
@@ -301,7 +304,7 @@ class FormsiteInterface:
     def ReturnLinks(self, links_regex=r'.+') -> set():
         """Returns a set of links of files saved on formsite servers, that were submitted to the specified form."""
         if self.Links is None or links_regex != r'.+':
-            self.ExtractLinks(links_regex=links_regex)
+            self.ExtractLinks(links_filter_regex=links_regex)
             self.ReturnLinks(links_regex=links_regex)
             return
         return self.Links
@@ -309,7 +312,7 @@ class FormsiteInterface:
     def WriteLinks(self, destination_path: str, links_regex=r'.+', sort_descending=True):
         """Writes links extracted with `self.ExtractLinks()` to a text file"""
         if self.Links is None or links_regex != r'.+':
-            self.ExtractLinks(links_regex=links_regex)
+            self.ExtractLinks(links_filter_regex=links_regex)
             self.WriteLinks(destination_path, links_regex=links_regex)
             return
         output_file = self._validate_path(destination_path)
@@ -321,7 +324,7 @@ class FormsiteInterface:
     def DownloadFiles(self, download_folder: str, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True, report_downloads=False, timeout=80, retries=1) -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
         if self.Links is None:
-            self.ExtractLinks(links_regex=links_regex)
+            self.ExtractLinks(links_filter_regex=links_regex)
             self.DownloadFiles(download_folder, max_concurrent_downloads=max_concurrent_downloads,
                                links_regex=links_regex, filename_regex=filename_regex, overwrite_existing=overwrite_existing)
             return
@@ -374,413 +377,3 @@ class FormsiteInterface:
         with open(output_file, 'w') as writer:
             writer.write(latest_ref)
 
-
-@dataclass
-class _FormsiteAPI:
-    interface: FormsiteInterface
-    save_results_jsons: bool = False
-    save_items_json: bool = False
-    refresh_items_json: bool = False
-
-    def __post_init__(self):
-        self.paramsHeader = self.interface.paramsHeader
-        self.itemsHeader = self.interface.itemsHeader
-        self.authHeader = self.interface.authHeader
-        self.form_id = self.interface.form_id
-        self.results_url = f'{self.interface.url_base}/forms/{self.interface.form_id}/results'
-        self.items_url = f'{self.interface.url_base}/forms/{self.interface.form_id}/items'
-        self._set_start_state()
-
-    def _set_start_state(self):
-        self.total_pages = 1
-        self.check_pages = True
-
-    async def Start(self, only_items=False):
-        """Performs all API calls to formsite servers asynchronously"""
-        async with ClientSession(headers=self.authHeader, timeout=ClientTimeout(total=None), connector=TCPConnector(limit=None)) as self.session:
-            with tqdm(desc='Starting API requests', total=2, unit=' calls', leave=False) as self.pbar:
-                if only_items:
-                    items = await self.fetch_items()
-                    self.pbar.update(1)
-                    return items
-                else:
-                    self.pbar.set_description("Fetching results")
-                    results = [await self.fetch_results(self.paramsHeader, 1)]
-                    tasks = []
-                    if self.total_pages > 1:
-                        self.pbar.total = self.total_pages
-                        for page in range(2,self.total_pages+1):
-                            tasks.append(asyncio.ensure_future(self.fetch_results(self.paramsHeader, page)))
-                    completed_tasks = await asyncio.gather(*tasks)
-                    results += completed_tasks
-                    self.pbar.set_description("Fetching items")
-                    items = await self.fetch_items()
-                    self.pbar.set_description("API calls complete")
-        results.remove(None) if None in results else 0
-        return items, results
-
-    async def fetch_results(self, params:dict, page:int) -> str:
-        content = await self.fetch_content(self.results_url, params, page=page)
-        if self.save_results_jsons:
-            await self.write_content(f'./results_{self.form_id}_{page}.json', content)
-        self.pbar.update(1)
-        return content
-
-    async def write_content(self, filename, content) -> None:
-        async with aiopen(filename, 'wb') as writer:
-            await writer.write(content)
-
-    async def fetch_content(self, url, params, page=None) -> bytes:
-        if page is not None:
-            params['page'] = page
-        async with self.session.get(url, params=params) as response:
-            content = await response.content.read()
-            if response.status != 200:
-                self.pbar.set_description(f"Error {response.status}")
-                if response.status == 429:
-                    self.pbar.set_description("Reached rate limit, waiting 60 seconds")
-                    await asyncio.sleep(60)
-                    self.pbar.set_description("Fetching items")
-                    content = await self.fetch_content(url, params, page=page)
-                else:
-                    try:
-                        response.raise_for_status()
-                    except ClientResponseError as e:
-                        print(f" {response.status} | {content.decode('utf-8', errors='ignore')}")
-                        raise e
-            if self.check_pages == True:
-                self.total_pages = int(response.headers['Pagination-Page-Last'])
-                self.check_pages = False
-        try:
-            return content.decode('utf-8')
-        except AttributeError:
-            return content
-
-    async def fetch_items(self) -> str:
-        content = await self.fetch_content(self.items_url, self.itemsHeader)
-        if self.save_items_json:
-            await self.write_content(f'./items_{self.form_id}.json', content)
-        self.pbar.update(1)
-        return content
-
-
-@dataclass
-class _FormsiteProcessing:
-    items: str
-    results: Iterable[str]
-    interface: FormsiteInterface
-    sort_asc: bool = False
-
-    def __post_init__(self):
-        self.items_json = loads(self.items)
-        self.results_jsons = [loads(results_page) for results_page in self.results]
-        self.timezone_offset = self.interface.params.timezone_offset
-        self.columns = self._generate_columns()
-
-    def _generate_columns(self):
-        ih = pd.DataFrame(self.items_json['items'])['label']
-        ih.name = None
-        return ih.to_list()
-
-    def Process(self) -> pd.DataFrame:
-        """Return a dataframe in the same format as a regular formsite export."""
-        if len(self.results_jsons[0]['results']) == 0:
-            raise Exception(
-                f"No results to process! FetchResults returned an empty list.")
-        with tqdm(total=3, desc='Processing results', leave=False) as self.pbar:
-            final_dataframe = self._init_process(self.results_jsons)
-            self.pbar.update(1)
-            self.pbar.desc = "Sorting results"
-            self.pbar.update(1)
-            final_dataframe.sort_values(
-                by=['Reference #'], ascending=self.sort_asc, inplace=True)
-            self.pbar.desc = "Results processed"
-            self.pbar.update(1)
-        return final_dataframe
-
-    def _init_process(self, result_jsons: list):
-        dataframes = tuple(pd.DataFrame(
-            results_json['results']) for results_json in result_jsons)
-        dataframe = pd.concat(dataframes)
-        dataframe = self._process(dataframe)
-        return dataframe
-
-    def _process(self, dataframe_in_progress):
-        dataframe_in_progress = self._init_dataframe(dataframe_in_progress)
-        items_df = pd.DataFrame(self._separate_items(
-            dataframe_in_progress['items']), columns=self.columns)
-        df_1, df_2 = self._hardcoded_columns_renaming(
-            dataframe_in_progress.reset_index(drop=True))
-        final_dataframe = pd.concat([df_1, items_df, df_2], axis=1)
-        return final_dataframe
-
-    def _init_dataframe(self, dataframe_in_progress) -> pd.DataFrame:
-        """Creates a dataframe from a json file for hardcoded columns"""
-        dataframe_in_progress['date_update'] = dataframe_in_progress['date_update'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
-        dataframe_in_progress['date_start'] = dataframe_in_progress['date_start'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
-        dataframe_in_progress['date_finish'] = dataframe_in_progress['date_finish'].apply(
-            lambda x: self._string2datetime(x, self.timezone_offset))
-        dataframe_in_progress['duration'] = dataframe_in_progress['date_finish'] - \
-            dataframe_in_progress['date_start']
-        dataframe_in_progress['duration'] = dataframe_in_progress['duration'].apply(
-            lambda x: x.total_seconds())
-        return dataframe_in_progress
-
-    def _separate_items(self, unprocessed_dataframe: pd.DataFrame):
-        """Separates the items array for each submission in results into desired format"""
-        list_of_rows = []
-        for row in unprocessed_dataframe:
-            processed_row = []
-            for cell in row:
-                final_value = ""
-                try:
-                    final_value += cell['value']
-                except:
-                    for value in cell['values']:
-                        final_value += value['value']
-                        if len(cell['values']) > 1:
-                            # | is a separator used by formsite, found on controls with multiple outputs, eg. checkboxes
-                            final_value += " | "
-                processed_row.append(final_value)
-            list_of_rows.append(processed_row)
-        return list_of_rows
-
-    def _string2datetime(self, old_date, timezone_offset):
-        """Converts ISO datetime string to datetime class"""
-        try:
-            new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%S"+"Z")
-            new_date = new_date + timezone_offset
-            return new_date
-        except:
-            return old_date
-
-    def _hardcoded_columns_renaming(self, main_dataframe):
-        """Separates hardcoded values into 2 parts, same way as formsite and renames them to the correct values"""
-        main_df_part1 = main_dataframe[['id', 'result_status']]
-        main_df_part1.columns = ['Reference #', 'Status']
-        main_df_part2 = main_dataframe[['date_update', 'date_start', 'date_finish',
-                                        'duration', 'user_ip', 'user_browser', 'user_device', 'user_referrer']]
-        main_df_part2.columns = ['Date', 'Start Time', 'Finish Time',
-                                 'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
-        return main_df_part1, main_df_part2
-
-
-@dataclass
-class _FormsiteDownloader:
-    download_folder: str
-    links: Iterable[str]
-    max_concurrent_downloads: int = 10
-    timeout: int = 80
-    retries: int = 1
-    overwrite_existing: bool = True
-    report_downloads: bool = False
-    filename_regex: str = r''
-
-    def __post_init__(self):
-        self.filename_regex = compile(self.filename_regex)
-        self.semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
-        self.dl_queue = asyncio.Queue()
-        self.Ctimeout = ClientTimeout(total=self.timeout)
-        self.internal_state = WorkerStateTracker(self.links, self.max_concurrent_downloads)
-        if self.overwrite_existing == False and len(self.links) > 0:
-            url = list(self.links)[0].rsplit('/',1)[0]
-            filenames_in_dl_dir = self._list_files_in_download_dir(url)
-            self.links = set(self.links) - filenames_in_dl_dir
-
-    async def Start(self):
-        """Starts download of links."""
-        async with ClientSession(connector=TCPConnector(limit=None)) as session:
-            with tqdm(total=len(self.links), desc="Downloading files", unit='files', leave=False) as self.pbar:
-                self.internal_state.update_pbar_callback = self.pbar.update
-                [self.dl_queue.put_nowait((link, session, 0))
-                 for link in self.links]
-                tasks = [asyncio.ensure_future(self._worker(
-                    self.dl_queue, self.semaphore)) for _ in range(self.max_concurrent_downloads)]
-                await asyncio.gather(*tasks)
-                #[task.cancel() for task in tasks]
-                self.pbar.set_description(desc="Download complete", refresh=True)
-        try: await session.close()
-        except: pass
-        if self.internal_state.failed > 0:
-           self.internal_state.write_failed()
-        if self.report_downloads == True:
-            self.internal_state.write_all()
-
-
-    def _error_handling(self, e: Exception, queue, attempt, url, session):
-        if isinstance(e, ClientResponseError):
-            if e.status == 403:
-                self.internal_state.mark_fail(url, e)
-            elif e.status == 404:
-                self.internal_state.mark_fail(url, e)
-            else:
-                self._retry_dl(queue, url, session, attempt)
-        elif isinstance(e, InvalidURL):
-            self.internal_state.mark_fail(url, e)
-        elif attempt < self.retries:
-            self._retry_dl(queue, url, session, attempt)
-        else:
-            self.internal_state.mark_fail(url, e)
-
-    def _retry_dl(self, queue: asyncio.Queue, url, session, attempt):
-        attempt+=1
-        self.internal_state.enqueued += 1
-        queue.put_nowait((url, session, attempt))
-
-    async def _worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
-        while True:
-            #self.internal_state.display_relevant_info()
-            if self.internal_state.can_terminate_worker():
-                self.internal_state.active_workers -= 1
-                break
-            url, session, attempt = await queue.get()
-            await semaphore.acquire()
-            self.internal_state.start_iteration()
-            try:
-                r = await self._download(url, session)
-                if r == 0:
-                    self.internal_state.mark_success(url)
-            except Exception as e:
-                self.pbar.set_description_str(desc=f"{repr(e)}", refresh=True)
-                self._error_handling(e, queue, attempt, url, session)
-                self.pbar.set_description(desc=f"Downloading files", refresh=True)
-            finally:
-                queue.task_done()
-                semaphore.release()
-                self.internal_state.end_iteration()
-        return 0
-
-    def _list_files_in_download_dir(self, url: str) -> set:
-        filenames_in_dir = set()
-        for file in os.listdir(self.download_folder):
-            filenames_in_dir.add(url+file)
-        return filenames_in_dir
-
-    async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024, in_progress_ext='.tmp'):
-        async with session.get(url, timeout=self.Ctimeout) as response:
-            #print(f" {response.status} | downloading {url}")
-            response.raise_for_status()
-            with tqdm(desc=filename[:25]+"…", total=response.content_length, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
-                async with aiopen(target+in_progress_ext, "wb") as writer:
-                    async for chunk in response.content.iter_chunked(chunk_size):
-                        await writer.write(chunk)
-                        pbar.update(len(chunk))
-            shutil.move(target+in_progress_ext, target)
-        return 0
-
-    async def _download(self, url: str, session: ClientSession):
-        filename, target = self.get_filename(url)
-        exit_code = await self._fetch(url, session,filename, target)
-        return exit_code
-
-    def get_filename(self, url):
-        filename = f"{url.split('/')[-1:][0]}"
-        if self.filename_regex.pattern != '':
-            filename = self._regex_substitution(filename, self.filename_regex)
-            target = f"{self.download_folder}/{filename}"
-            target = self._check_if_file_exists(target)
-        else:
-            target = f"{self.download_folder}/{filename}"
-        return filename, target
-
-    def _check_if_file_exists(self, filename, n=0) -> str:
-        path = Path(filename).resolve()
-        if path.exists():
-            temp = filename.rsplit('.', 1)
-            if temp[0].endswith(f'_{n}'):
-                temp[0] = temp[0][:temp[0].rfind(f'_{n}')]
-            try:
-                filename = temp[0] + f"_{n+1}." + temp[1]
-            except IndexError:
-                filename = temp[0] + f"_{n+1}"
-            filename = self._check_if_file_exists(filename, n=n+1)
-        return filename
-
-    def _regex_substitution(self, filename, filename_regex):
-        try:
-            temp = filename.rsplit('.', 1)
-            try:
-                filename = f"{filename_regex.sub('', temp[0])}.{temp[1]}"
-            except:
-                filename = f"{filename_regex.sub('', temp[0])}"
-        except:
-            filename = f"{filename_regex.sub('', filename)}"
-        return filename
-
-@dataclass
-class WorkerStateTracker:
-    urls: Iterable[str]
-    active_workers: int
-
-    def __post_init__(self):
-        self.urls = set(self.urls)
-        self.total: int = len(self.urls)
-        self.enqueued: int = len(self.urls)
-        self.in_progress: int = 0
-        self.success: int = 0
-        self.failed: int = 0
-        self.failed_urls: set = set()
-        self.success_urls: set = set()
-        self.complete_urls: list = list()
-        self.update_pbar_callback = None
-
-
-    def total_complete(self):
-        return self.success + self.failed
-
-    def write_failed(self):
-        with open('./failed_downloads.txt', 'a') as writer:
-            to_write = self.get_failed_url_diff()
-            for i in to_write:
-                writer.write(f"{i}\n")
-        print(f"{len(to_write)} files failed to download, please see failed_downloads.txt for more info\nif the error is not 403, try increasing timeout or reducing max concurrent downloads")
-
-    def write_all(self):
-        with open('./downloads_status.txt', 'w') as writer:
-            for i in self.complete_urls:
-                writer.write(f"{i}\n")
-
-    def display_relevant_info(self):
-        print('----------------------------------')
-        print(f"enqueued: {self.enqueued}")
-        print(f"active workers: {self.active_workers}")
-        print(f"files in progress: {self.in_progress}")
-        print(f"success: {self.success}")
-        print(f"failed: {self.failed}")
-    
-    def try_exit(self) -> bool:
-        if self.total_complete() >= self.total:
-            return True
-        elif self.enqueued > 0:
-            return False
-        elif self.active_workers > self.in_progress:
-            return True
-        else: return False
-
-    def can_terminate_worker(self):
-        if self.try_exit():
-            return True
-
-    def mark_success(self, url: str):
-        self.complete_urls.append(f"{url} ;   OK")
-        self.success_urls.add(f"{url}")
-        self.success += 1
-        self.update_pbar_callback(1)
-
-    def mark_fail(self, url: str, e: Exception):
-        self.complete_urls.append(f"{url} ;   {repr(e)}")
-        self.failed_urls.add(f"{url}")
-        self.failed += 1
-        self.update_pbar_callback(1)
-
-    def end_iteration(self):
-        self.in_progress -= 1
-
-    def start_iteration(self):
-        self.enqueued -= 1
-        self.in_progress += 1
-    
-    def get_failed_url_diff(self):
-        return self.urls - self.success_urls
