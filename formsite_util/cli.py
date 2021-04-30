@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import asyncio
-from aiohttp import request
-from core import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
 from time import perf_counter
 
 
@@ -25,7 +23,7 @@ def GatherArguments():
                     "| 5xx  | Unexpected internal error.                  |\n",
                     formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version', version="1.2.7.1")
+    parser.add_argument('-V', '--version', action='version', version="1.2.7.5")
     g_login = parser.add_argument_group('Login')
     g_params = parser.add_argument_group('Results Parameters')
     g_functions = parser.add_argument_group('Functions')
@@ -33,9 +31,6 @@ def GatherArguments():
     g_debug = parser.add_argument_group('Debugging')
     g_nocreds = parser.add_mutually_exclusive_group(required=False)
 
-    g_login.add_argument('-u', '--username', type=str, default=None, required=True,
-                         help="Username of the account used to create your API token. Required."
-                         )
     g_login.add_argument('-t', '--token', type=str, default=None, required=True,
                          help="Your Formsite API token. Required."
                          )
@@ -136,9 +131,9 @@ def GatherArguments():
     g_functions.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
                              help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
     g_func_params.add_argument('--timeout',  nargs=1,  default=80, type=int,
-                             help="Timeout in seconds for when you are downloading files. Defaults to 30.")
-    g_func_params.add_argument('--retries',  nargs=1,  default=3, type=int,
-                             help="Number of times to retry downloading files if the download fails. Defaults to 3.")
+                             help="Timeout in seconds for each individual file download. If download time exceeds it, it will throw a timeout error and retry up until retries. Defaults to 80.")
+    g_func_params.add_argument('--retries',  nargs=1,  default=1, type=int,
+                             help="Number of times to retry downloading files if the download fails. Defaults to 1.")
     g_func_params.add_argument('--get_download_status', default=False, action='store_true',
                              help="If you enable this option, a text file with status for each downloaded link will be saved (complete or incomplete).")
     g_nocreds.add_argument('-l', '--list_columns', action="store_true",  default=False,
@@ -179,8 +174,7 @@ def main():
         timezone=arguments.timezone,
         date_format=arguments.date_format,
         sort=arguments.sort)
-    credentials = FormsiteCredentials(
-        arguments.username, arguments.token, arguments.server, arguments.directory)
+    credentials = FormsiteCredentials(arguments.token, arguments.server, arguments.directory)
 
     with FormsiteInterface(arguments.form, credentials, params=parameters, verbose=arguments.verbose) as interface:
         if arguments.list_forms is not False:

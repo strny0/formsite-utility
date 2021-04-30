@@ -147,7 +147,6 @@ class FormsiteParams:
 @dataclass
 class FormsiteCredentials:
     """Class which represents your user credentials for accessing the formsite API."""
-    username: str
     token: str
     server: str
     directory: str
@@ -157,12 +156,10 @@ class FormsiteCredentials:
 
     def getAuthHeader(self) -> dict:
         """Returns a dictionary sent as a header in the API request for authorization purposes."""
-        return {"Authorization": f"{self.username} {self.token}", "Accept": "application/json"}
+        return {"Authorization": f"bearer {self.token}", "Accept": "application/json"}
 
     def confirm_validity(self):
         """Checks if credentials input is in correct format."""
-        self.username = self._confirm_arg_format(
-            self.username, 'username', '-u', 'username')
         self.token = self._confirm_arg_format(
             self.token, 'token', '-t', 'token')
         self.server = self._confirm_arg_format(
@@ -286,8 +283,8 @@ class FormsiteInterface:
             for row in d:
                 for val in row["stats"]:
                     row[val] = row['stats'][val]
-            forms_df = pd.DataFrame(d, columns=['name', 'state', 'form id', 'resultsCount', 'filesSize'])
-            forms_df = forms_df[['name', 'state', 'resultsCount', 'filesSize', 'form id']]
+            forms_df = pd.DataFrame(d, columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
+            forms_df['form id'] = forms_df.pop('directory')
             forms_df.sort_values(by=['name'], inplace=True)
             forms_df.reset_index(inplace=True, drop=True)
             return forms_df
@@ -321,7 +318,7 @@ class FormsiteInterface:
             sorted_links.sort(reverse=sort_descending)
             writer.writelines(sorted_links)
 
-    def DownloadFiles(self, download_folder: str, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True, report_downloads=False, timeout=30, retries=3) -> None:
+    def DownloadFiles(self, download_folder: str, max_concurrent_downloads=10, links_regex=r'.+', filename_regex=r'', overwrite_existing=True, report_downloads=False, timeout=80, retries=1) -> None:
         """Downloads files saved on formsite servers, that were submitted to the specified form. Please customize `max_concurrent_downloads` to your specific use case."""
         if self.Links is None:
             self.ExtractLinks(links_regex=links_regex)
@@ -408,11 +405,9 @@ class _FormsiteAPI:
                     return items
                 else:
                     self.pbar.set_description("Fetching results")
-                    results = []
-                    first = await self.fetch_results(self.paramsHeader, 1)
-                    results.append(first)
+                    results = [await self.fetch_results(self.paramsHeader, 1)]
+                    tasks = []
                     if self.total_pages > 1:
-                        tasks = []
                         self.pbar.total = self.total_pages
                         for page in range(2,self.total_pages+1):
                             tasks.append(asyncio.ensure_future(self.fetch_results(self.paramsHeader, page)))
@@ -578,7 +573,7 @@ class _FormsiteDownloader:
     links: Iterable[str]
     max_concurrent_downloads: int = 10
     timeout: int = 80
-    retries: int = 3
+    retries: int = 1
     overwrite_existing: bool = True
     report_downloads: bool = False
     filename_regex: str = r''
@@ -587,9 +582,8 @@ class _FormsiteDownloader:
         self.filename_regex = compile(self.filename_regex)
         self.semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
         self.dl_queue = asyncio.Queue()
-        self.status = []
-        self.failed_downloads = []
-        self.active_workers = self.max_concurrent_downloads
+        self.Ctimeout = ClientTimeout(total=self.timeout)
+        self.internal_state = WorkerStateTracker(self.links, self.max_concurrent_downloads)
         if self.overwrite_existing == False and len(self.links) > 0:
             url = list(self.links)[0].rsplit('/',1)[0]
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
@@ -597,75 +591,66 @@ class _FormsiteDownloader:
 
     async def Start(self):
         """Starts download of links."""
-        async with ClientSession(connector=TCPConnector(limit=None), timeout=ClientTimeout(total=self.timeout)) as session:
-            with tqdm(total=len(self.links), desc='Downloading files', unit='files', leave=False) as self.pbar:
-                [self.dl_queue.put_nowait((link, session, 1))
+        async with ClientSession(connector=TCPConnector(limit=None)) as session:
+            with tqdm(total=len(self.links), desc="Downloading files", unit='files', leave=False) as self.pbar:
+                self.internal_state.update_pbar_callback = self.pbar.update
+                [self.dl_queue.put_nowait((link, session, 0))
                  for link in self.links]
-                tasks = [asyncio.create_task(self.worker(
+                tasks = [asyncio.ensure_future(self._worker(
                     self.dl_queue, self.semaphore)) for _ in range(self.max_concurrent_downloads)]
-                await self.dl_queue.join()
-                [task.cancel() for task in tasks]
-                self.pbar.desc = "Download complete"
-        if len(self.failed_downloads) > 0:
-            with open('./failed_downloads.txt', 'w') as writer:
-                writer.writelines(self.failed_downloads)
-            print(
-                f"{len(self.failed_downloads)} files failed to download, please see failed_downloads.txt for more info\n if the error is not 403, try increasing timeout or reducing max concurrent downloads")
+                await asyncio.gather(*tasks)
+                #[task.cancel() for task in tasks]
+                self.pbar.set_description(desc="Download complete", refresh=True)
+        try: await session.close()
+        except: pass
+        if self.internal_state.failed > 0:
+           self.internal_state.write_failed()
         if self.report_downloads == True:
-            with open('./downloads_status.txt', 'w') as writer:
-                for i in self.status:
-                    writer.write(f"{i[0]} ; {i[1]}\n")
+            self.internal_state.write_all()
 
-    def try_exit(self):
-        if len(self.status) >= len(self.links):
-            return True
-        if self.active_workers > len(self.links) - len(self.status):
-            return True
-            
-    async def worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
-        while not queue.empty():
-            if self.try_exit():
+
+    def _error_handling(self, e: Exception, queue, attempt, url, session):
+        if isinstance(e, ClientResponseError):
+            if e.status == 403:
+                self.internal_state.mark_fail(url, e)
+            elif e.status == 404:
+                self.internal_state.mark_fail(url, e)
+            else:
+                self._retry_dl(queue, url, session, attempt)
+        elif isinstance(e, InvalidURL):
+            self.internal_state.mark_fail(url, e)
+        elif attempt < self.retries:
+            self._retry_dl(queue, url, session, attempt)
+        else:
+            self.internal_state.mark_fail(url, e)
+
+    def _retry_dl(self, queue: asyncio.Queue, url, session, attempt):
+        attempt+=1
+        self.internal_state.enqueued += 1
+        queue.put_nowait((url, session, attempt))
+
+    async def _worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
+        while True:
+            #self.internal_state.display_relevant_info()
+            if self.internal_state.can_terminate_worker():
+                self.internal_state.active_workers -= 1
                 break
             url, session, attempt = await queue.get()
+            await semaphore.acquire()
+            self.internal_state.start_iteration()
             try:
-                await semaphore.acquire()
                 r = await self._download(url, session)
                 if r == 0:
-                    self.pbar.update(1)
-                    queue.task_done()
-                    self.status.append([url, 'complete'])
+                    self.internal_state.mark_success(url)
             except Exception as e:
-                self.pbar.desc = f"{e}"
-                await self._handle_error(url,session,attempt,queue, e)
-                self.pbar.desc = "Downloading files"
+                self.pbar.set_description_str(desc=f"{repr(e)}", refresh=True)
+                self._error_handling(e, queue, attempt, url, session)
+                self.pbar.set_description(desc=f"Downloading files", refresh=True)
             finally:
+                queue.task_done()
                 semaphore.release()
-                if self.try_exit():
-                    break
-        self.active_workers -= 1
-
-    async def _log_status_and_stop(self, queue, exception, url):
-        queue.task_done()
-        self.status.append([url, f"{exception.__class__} {exception}"])
-        self.failed_downloads.append(url+'\n')
-        self.pbar.update(1)
-
-    async def _retry(self, queue, session, attempt, url):
-        queue.put_nowait((url, session, (attempt+1)))
-        await asyncio.sleep(0.1)
-
-    async def _handle_error(self, url: str, session: ClientSession, attempt: int, queue: asyncio.Queue, exception: Exception):
-        if type(exception) is ClientResponseError:
-            if exception.status == 403:
-                await self._log_status_and_stop(queue, exception, url)
-            else:
-                await self._retry(queue, session, attempt, url)
-        elif type(exception) is InvalidURL:
-            await self._log_status_and_stop(queue, exception, url)
-        elif attempt < self.retries:
-            await self._retry(queue, session, attempt, url)
-        else:
-            await self._log_status_and_stop(queue, exception, url)
+                self.internal_state.end_iteration()
+        return 0
 
     def _list_files_in_download_dir(self, url: str) -> set:
         filenames_in_dir = set()
@@ -674,21 +659,16 @@ class _FormsiteDownloader:
         return filenames_in_dir
 
     async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024, in_progress_ext='.tmp'):
-        async with session.get(url) as response:
+        async with session.get(url, timeout=self.Ctimeout) as response:
             #print(f" {response.status} | downloading {url}")
             response.raise_for_status()
-            size = int(response.headers.get('content-length', 0)) or None
-            with tqdm(desc=filename, total=size, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
-                try:
-                    async with aiopen(target+in_progress_ext, "wb") as writer:
-                        async for chunk in response.content.iter_chunked(chunk_size):
-                            await writer.write(chunk)
-                            pbar.update(len(chunk))
-                except KeyboardInterrupt:
-                    pbar.close()
+            with tqdm(desc=filename[:25]+"…", total=response.content_length, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
+                async with aiopen(target+in_progress_ext, "wb") as writer:
+                    async for chunk in response.content.iter_chunked(chunk_size):
+                        await writer.write(chunk)
+                        pbar.update(len(chunk))
             shutil.move(target+in_progress_ext, target)
         return 0
-
 
     async def _download(self, url: str, session: ClientSession):
         filename, target = self.get_filename(url)
@@ -729,3 +709,78 @@ class _FormsiteDownloader:
             filename = f"{filename_regex.sub('', filename)}"
         return filename
 
+@dataclass
+class WorkerStateTracker:
+    urls: Iterable[str]
+    active_workers: int
+
+    def __post_init__(self):
+        self.urls = set(self.urls)
+        self.total: int = len(self.urls)
+        self.enqueued: int = len(self.urls)
+        self.in_progress: int = 0
+        self.success: int = 0
+        self.failed: int = 0
+        self.failed_urls: set = set()
+        self.success_urls: set = set()
+        self.complete_urls: list = list()
+        self.update_pbar_callback = None
+
+
+    def total_complete(self):
+        return self.success + self.failed
+
+    def write_failed(self):
+        with open('./failed_downloads.txt', 'a') as writer:
+            to_write = self.get_failed_url_diff()
+            for i in to_write:
+                writer.write(f"{i}\n")
+        print(f"{len(to_write)} files failed to download, please see failed_downloads.txt for more info\nif the error is not 403, try increasing timeout or reducing max concurrent downloads")
+
+    def write_all(self):
+        with open('./downloads_status.txt', 'w') as writer:
+            for i in self.complete_urls:
+                writer.write(f"{i}\n")
+
+    def display_relevant_info(self):
+        print('----------------------------------')
+        print(f"enqueued: {self.enqueued}")
+        print(f"active workers: {self.active_workers}")
+        print(f"files in progress: {self.in_progress}")
+        print(f"success: {self.success}")
+        print(f"failed: {self.failed}")
+    
+    def try_exit(self) -> bool:
+        if self.total_complete() >= self.total:
+            return True
+        elif self.enqueued > 0:
+            return False
+        elif self.active_workers > self.in_progress:
+            return True
+        else: return False
+
+    def can_terminate_worker(self):
+        if self.try_exit():
+            return True
+
+    def mark_success(self, url: str):
+        self.complete_urls.append(f"{url} ;   OK")
+        self.success_urls.add(f"{url}")
+        self.success += 1
+        self.update_pbar_callback(1)
+
+    def mark_fail(self, url: str, e: Exception):
+        self.complete_urls.append(f"{url} ;   {repr(e)}")
+        self.failed_urls.add(f"{url}")
+        self.failed += 1
+        self.update_pbar_callback(1)
+
+    def end_iteration(self):
+        self.in_progress -= 1
+
+    def start_iteration(self):
+        self.enqueued -= 1
+        self.in_progress += 1
+    
+    def get_failed_url_diff(self):
+        return self.urls - self.success_urls
