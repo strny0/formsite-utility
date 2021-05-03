@@ -5,18 +5,19 @@ from datetime import datetime as dt
 from datetime import timedelta as td
 from pathlib import Path
 from json import loads
-from typing import Any
+from typing import Any, Iterable
 from pytz import timezone as pytztimezone
 from regex import search, compile
 import asyncio
 from aiohttp import request
-from aiofiles import open as aiopen
 import pandas as pd
 import openpyxl
 from dataclasses import dataclass
 from formsite_util.downloader import _FormsiteDownloader
 from formsite_util.processing import _FormsiteProcessing
 from formsite_util.api import _FormsiteAPI
+import csv
+from collections import defaultdict
 
 @dataclass
 class FormsiteParams:
@@ -196,15 +197,16 @@ class FormsiteInterface:
     login: FormsiteCredentials
     params: FormsiteParams = FormsiteParams()
     verbose: bool = False
+    Data: pd.DataFrame = None
+    Links: Iterable[str] = None
 
     def __post_init__(self):
+        """Initializes private variables. url_base is a base url in the format server.formsite.com/api/v2/directory\nurl_files is url_base/files\nAlso intializes HTTP headers for parameters and authorization"""
         self.url_base: str = f"https://{self.login.server}.formsite.com/api/v2/{self.login.directory}"
         self.url_files = f"https://{self.login.server}.formsite.com/{self.login.directory}/files/"
         self.authHeader = self.login.getAuthHeader()
         self.paramsHeader = self.params.getParamsHeader()
         self.itemsHeader = self.params.getItemsHeader()
-        self.Data = None
-        self.Links = None
 
     def __enter__(self):
         return self
@@ -244,30 +246,31 @@ class FormsiteInterface:
 
     def FetchResults(self, save_results_jsons=False, save_items_json=False, refresh_items_json=False) -> None:
         """Fetches results from formsite API according to specified parameters. Updates the `self.Data` variable which stores the dataframe."""
-        if self.form_id == '':
-            raise Exception(
-                f"Form ID is empty! You cannot call FormsiteInterface.FetchResults without specifying a valid form id.")
-        else:
-            items, results = self._perform_api_fetch(
-                save_results_jsons=save_results_jsons, save_items_json=save_items_json, refresh_items_json=refresh_items_json)
-            self.Data = self._assemble_dataframe(items, results)
+        assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
+        items, results = self._perform_api_fetch(
+            save_results_jsons=save_results_jsons, save_items_json=save_items_json, refresh_items_json=refresh_items_json)
+        self.Data = self._assemble_dataframe(items, results)
 
     def ReturnResults(self, save_results_jsons=False, save_items_json=False, refresh_items_json=False) -> pd.DataFrame():
         """Returns pandas dataframe of results. If it doesnt exist yet, creates it."""
         if self.Data is None:
-            self.FetchResults(save_results_jsons=save_results_jsons,
-                              save_items_json=save_items_json, refresh_items_json=refresh_items_json)
+            self.FetchResults(save_results_jsons=save_results_jsons, save_items_json=save_items_json, refresh_items_json=refresh_items_json)
         return self.Data
 
     def ExtractLinks(self, links_filter_regex=r'.+') -> None:
         """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
-        links_filter_regex = compile(links_filter_regex)
         if self.Data is None:
             self.FetchResults()
+        links_regex = fr'(https\:\/\/{self.login.server}\.formsite\.com\/{self.login.directory}\/files\/.*)'
+        # iter through self.Data columns, 
+        # for each column cast to string, 
+        # extract regex if it exists, 
+        # unstack into dataframes and concat them all, 
+        # then iterate through it and keep only links that match regex filter
+        link_columns = pd.concat([col.astype(str).str.extractall(links_regex).unstack() for name, col in self.Data.items()])
+        links_filter_regex = compile(links_filter_regex)
         self.Links = set()
-        # iter through self.Data columns, for each column cast to string, extract regex if it exists, unstack into dataframes and concat them all, then iterate through it and find links
-        unproc_links = pd.concat([col.astype(str).str.extractall(f'(https\:\/\/{self.login.server}\.formsite\.com\/{self.login.directory}\/files\/.*)').unstack() for name, col in self.Data.items()])
-        for i, item in unproc_links.iteritems():
+        for _, item in link_columns.iteritems():
             for o in item.to_list():
                 try:
                     if links_filter_regex.search(o) is not None:
@@ -282,17 +285,19 @@ class FormsiteInterface:
         async with request("GET", url_forms, headers=self.authHeader) as response:
             response.raise_for_status()
             content = await response.content.read()
-            d = loads(content.decode('utf-8'))['forms']
-            for row in d:
+            all_forms_json = loads(content.decode('utf-8'))['forms']
+            # un-nest the stats object
+            for row in all_forms_json:
                 for val in row["stats"]:
                     row[val] = row['stats'][val]
-            forms_df = pd.DataFrame(d, columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
+            forms_df = pd.DataFrame(all_forms_json, columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
             forms_df['form id'] = forms_df.pop('directory')
             forms_df.sort_values(by=['name'], inplace=True)
             forms_df.reset_index(inplace=True, drop=True)
             return forms_df
 
-    def ListAllForms(self, display2console=False, save2csv=False):
+    def ListAllForms(self, display2console: bool = False, save2csv: str = False):
+        """Prints form name, id, count of results, filesize of uploaded files and status into console or csv."""
         forms_df = asyncio.get_event_loop().run_until_complete(self._list_all_forms())
         if display2console:
             pd.set_option('display.max_rows', None)
@@ -305,8 +310,6 @@ class FormsiteInterface:
         """Returns a set of links of files saved on formsite servers, that were submitted to the specified form."""
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_regex=links_regex)
-            self.ReturnLinks(links_regex=links_regex)
-            return
         return self.Links
 
     def WriteLinks(self, destination_path: str, links_regex=r'.+', sort_descending=True):
@@ -349,22 +352,35 @@ class FormsiteInterface:
         print(f"Results labels: {self.params.resultslabels}")
         print(f"Results view: {self.params.resultsview}")
 
-    def WriteResults(self, destination_path: str, encoding="utf-8", date_format="%Y-%m-%d %H:%M:%S") -> None:
+    def WriteResults(self, destination_path: str, encoding="utf-8", line_terminator='\n', separator=',', date_format="%Y-%m-%d %H:%M:%S", quoting=csv.QUOTE_MINIMAL) -> None:
         if self.Data is None:
             self.FetchResults()
-            self.WriteResults(destination_path,
-                              encoding=encoding, date_format=date_format)
-            return
-
         output_file = self._validate_path(destination_path)
-
-        if search('.+\\.xlsx$', output_file) is not None:
+        if search('.+\\.txt$', output_file) is not None:
+            self.Data.to_string(output_file, encoding=encoding, index=False)
+        elif search('.+\\.pkl$', output_file) is not None or search('.+\\.pickle$', output_file) is not None:
+            self.Data.to_pickle(output_file)
+        elif search('.+\\.parquet$', output_file) is not None:
+            self.Data.to_parquet(output_file, index=False)
+        elif search('.+\\.md$', output_file) is not None:
+            self.Data.to_markdown(output_file, index=False)
+        elif search('.+\\.json$', output_file) is not None:
+            try:
+                self.Data.to_json(output_file, orient='records', date_format='iso')
+            except ValueError:
+                renamer = defaultdict()
+                for column_name in self.Data.columns[self.Data.columns.duplicated(keep=False)].tolist():
+                    if column_name not in renamer:
+                        renamer[column_name] = [column_name+'_0']
+                    else:
+                        renamer[column_name].append(column_name +'_'+str(len(renamer[column_name])))
+                self.Data.rename(columns=lambda column_name: renamer[column_name].pop(0) if column_name in renamer else column_name).to_json(output_file, orient='records', date_format='iso')
+        elif search('.+\\.xlsx$', output_file) is not None:
             print('Writing to excel (this can be slow for large files!)')
             self.Data.to_excel(output_file, index=False,
                                engine='openpyxl', freeze_panes=(1, 1))
         else:
-            self.Data.to_csv(output_file, index=False, chunksize=1024,
-                             encoding=encoding, date_format=date_format, line_terminator="\n", sep=',')
+            self.Data.to_csv(output_file, index=False, chunksize=1024, encoding=encoding, date_format=date_format, line_terminator=line_terminator, sep=separator, quoting=quoting)
 
     def WriteLatestRef(self, destination_path: str):
         if self.Data is None:

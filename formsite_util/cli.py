@@ -2,7 +2,7 @@
 import argparse
 from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
 from time import perf_counter
-
+import csv
 
 def GatherArguments():
     parser = argparse.ArgumentParser(
@@ -23,21 +23,23 @@ def GatherArguments():
                     "| 5xx  | Unexpected internal error.                  |\n",
                     formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version', version="1.2.7.6")
-    g_login = parser.add_argument_group('Login')
+    parser.add_argument('-V', '--version', action='version', version="1.2.7.7")
+    g_auth = parser.add_argument_group('Authorization')
     g_params = parser.add_argument_group('Results Parameters')
-    g_functions = parser.add_argument_group('Functions')
-    g_func_params = parser.add_argument_group('Functions Parameters')
+    g_output = parser.add_argument_group('Output file')
+    g_extract = parser.add_argument_group('Extract links')
+    g_download = parser.add_argument_group('Download files')
+    g_other = parser.add_argument_group('Other functions')
     g_debug = parser.add_argument_group('Debugging')
     g_nocreds = parser.add_mutually_exclusive_group(required=False)
 
-    g_login.add_argument('-t', '--token', type=str, default=None, required=True,
+    g_auth.add_argument('-t', '--token', type=str, default=None, required=True,
                          help="Your Formsite API token. Required."
                          )
-    g_login.add_argument('-s', '--server', type=str, default=None, required=True,
+    g_auth.add_argument('-s', '--server', type=str, default=None, required=True,
                          help="Your Formsite server. A part of the url. https://fsX.forms… <- the 'fsX' part. For example 'fs22'. Required."
                          )
-    g_login.add_argument('-d', '--directory', type=str, default=None, required=True,
+    g_auth.add_argument('-d', '--directory', type=str, default=None, required=True,
                          help="Your Formsite directory. Can be found under [Share > Links > Directory]. Required."
                          )
     g_params.add_argument('-f', '--form', type=str, default=None,
@@ -67,74 +69,66 @@ def GatherArguments():
     g_params.add_argument('--resultsview', type=int, default=11,
                           help="Use specific results view for your CSV headers. Defaults to 11 = Items+Statistics. Other values currently not supported"
                           )
-    g_params.add_argument('-F', '--date_format',  default="%Y-%m-%d %H:%M:%S",
-                          help="Specify a quoted string using python datetime directives to specify what format you want your dates in (column: Date)."
-                          "\nDefaults to '%%Y-%%m-%%d %%H:%%M:%%S' which is yyyy-mm-dd HH:MM:SS"
-                          "\nYou can find the possible format directives here: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior"
-                          )
     g_params.add_argument('-T', '--timezone',  default='local',
                           help="You can use this flag to specify the timezone relative to which you want your results."
                           "\nThis is useful for when your organization is using a single formsite timezone for all subusers"
                           "\nInput either name of the timezone from this list: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones"
                           "\nThe timezone database method accounts for daylight savings time."
                           "\nor an offset in the format +02:00 or +0200 or 0200 for a 2 hour later time (for example) from your LOCAL time"
-                          "\n[Examples: offsets]"
-                          "\n Offset    Cities (this does not account for daylight savings time)"
-                          "\n'-08:00' - Los Angeles, Vancouver, Tijuana"
-                          "\n'-07:00' - Denver, Edmonton, Ciudad Juarez"
-                          "\n'-06:00' - Mexico City, Chicago, San Salvador"
-                          "\n'-05:00' - New York, Toronto, Havana, Lima"
-                          "\n'-03:00' - São Paulo, Buenos Aires, Montevideo"
-                          "\n'+00:00' - London, Lisbon, Dakar"
-                          "\n'+01:00' - Berlin, Rome, Paris, Prague"
-                          "\n'+02:00' - Cairo, Kiev, Jerusalem, Athens, Sofia"
-                          "\n'+03:00' - Moscow, Istanbul, Baghdad, Addis Ababa"
-                          "\n'+04:00' - Dubai, Tbilisi, Yerevan"
-                          "\n'+06:00' - Dhaka, Almaty, Omsk"
-                          "\n'+07:00' - Jakarta, Ho Chi Minh City, Bangkok, Krasnoyarsk"
-                          "\n'+08:00' - China - Shanghai, Taipei, Kuala Lumpur, Singapore, Perth, Manila, Makassar, Irkutsk"
-                          "\n'+09:00' - Tokyo, Seoul, Pyongyang, Ambon, Chita"
-                          "\n'+10:00' - Sydney, Port Moresby, Vladivostok"
-                          "\n"
                           "\n[Examples: database names] avoid using deprecated ones"
                           "\n'America/Chicago'"
                           "\n'Europe/Paris'"
                           "\n'America/New_York'"
                           "\n'Asia/Bangkok'"
                           )
-    g_functions.add_argument('-o', '--output_file', nargs='?', default=False, const='default',
+    g_output.add_argument('-o', '--output_file', nargs='?', default=False, const='default',
                              help="Specify output file name and location. \nDefaults to export_yyyymmdd_formid.csv in the folder of the script."
+                             "\nSupported output formats are (.csv|.xlsx|.pkl|.pickle|.json|.parquet|.md|.txt)"
                              )
-    g_functions.add_argument('-x', '--extract_links', nargs='?',  default=False, const='default',
+    g_extract.add_argument('-x', '--extract_links', nargs='?',  default=False, const='default',
                              help="If you include this flag, you will get a text file that has all links that start with formsite url stored. \nYou can specify file name or location, for example '-x C:\\Users\\MyUsername\\Desktop\\download_links.txt'. \nIf you don't specify a location, it will default to the folder of the script."
                              )
-    g_functions.add_argument('-D', '--download_links', nargs='?',  default=False, const='default',
+    g_download.add_argument('-D', '--download_links', nargs='?',  default=False, const='default',
                              help="If you include this flag, all formsite links in the export will be downloaded to a folder."
                              "\nYou can specify location, for example `-D 'C:\\Users\\My Username\\Desktop\\downloads'"
                              "\nIf you don't specify a location, it will default to the folder of the script."
                              )
-    g_func_params.add_argument('-X', '--links_regex', type=str,  default='.+',
+    g_other.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
+                             help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
+    g_output.add_argument('--encoding', type=str,  default='utf-8',
+                               help="Specify encoding of the output file (if output format supports it). Defaults to 'utf-8'")
+    g_output.add_argument('--separator', type=str,  default=',',
+                               help="Specify separator of the output file (if output format supports it). Defaults to ',' (comma)")
+    g_output.add_argument('--line_terminator', type=str, choices={"LF","CR","CRLF"}, default="LF",
+                               help="Specify line terminator of the output file (if output format supports it). Defaults to '\\n' (LF) (newline)")
+    g_output.add_argument('--quoting', type=str,  choices={"MINIMAL","ALL","NONNUMERIC","NONE"}, default="MINIMAL",
+                               help="Specify quoting level of the output file (if output format supports it). Defaults to 'MINIMAL'"
+                               "\nMore info about the quoting levels: https://docs.python.org/3/library/csv.html")
+    g_output.add_argument('--date_format',  default="%Y-%m-%d %H:%M:%S",
+                          help="Specify a quoted string using python datetime directives to specify what format you want your dates in (column: Date)."
+                          "\nDefaults to '%%Y-%%m-%%d %%H:%%M:%%S' which is yyyy-mm-dd HH:MM:SS"
+                          "\nYou can find the possible format directives here: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior"
+                          )
+    g_extract.add_argument('-X', '--links_regex', type=str,  default='.+',
                                help="Keep only links that match the regex you provide."
                                "\nWon't do anything if -x or -d arguments are not provided."
                                "\nDefaults to '.+'. Example usage: '-X \\.json$' would only give you files that have .json extension."
                                )
-    g_func_params.add_argument('-c', '--concurrent_downloads',  default=10, type=int,
+    g_download.add_argument('-c', '--concurrent_downloads',  default=10, type=int,
                                help="You can specify the number of concurrent download tasks."
                                "\nMore for large numbers of small files, less for large files."
                                "\nDefault is 10")
-    g_func_params.add_argument('-n', '--dont_overwrite_downloads',  default=True, action="store_false",
+    g_download.add_argument('-n', '--dont_overwrite_downloads',  default=True, action="store_false",
                                help="If you include this flag, files with the same filenames as you are downloading will not be overwritten and re-downloaded.")
-    g_func_params.add_argument('-R', '--filename_regex',  default='', type=str,
+    g_download.add_argument('-R', '--filename_regex',  default='', type=str,
                                help="If you include this argument, filenames of the files you download from formsite servers will remove all characters from their name that dont match the regex you provide."
                                "\nExpecting an input of allowed characters, for example: -R '[^A-Za-z0-9\\_\\-]+'"
                                "\nAny files that would be overwritten as a result of the removal of characters will be appended with _1, _2, etc.")
-    g_functions.add_argument('-S', '--store_latest_ref',  nargs='?',  default=False, const='default',
-                             help="If you enable this option, a text file `latest_ref.txt` will be created. \nThis file will only contain the highest reference number in the export. \nIf there are no results in your export, nothign will happen.")
-    g_func_params.add_argument('--timeout',  nargs=1,  default=80, type=int,
+    g_download.add_argument('--timeout',  nargs=1,  default=80, type=int,
                              help="Timeout in seconds for each individual file download. If download time exceeds it, it will throw a timeout error and retry up until retries. Defaults to 80.")
-    g_func_params.add_argument('--retries',  nargs=1,  default=1, type=int,
+    g_download.add_argument('--retries',  nargs=1,  default=1, type=int,
                              help="Number of times to retry downloading files if the download fails. Defaults to 1.")
-    g_func_params.add_argument('--get_download_status', default=False, action='store_true',
+    g_download.add_argument('--get_download_status', default=False, action='store_true',
                              help="If you enable this option, a text file with status for each downloaded link will be saved (complete or incomplete).")
     g_nocreds.add_argument('-l', '--list_columns', action="store_true",  default=False,
                            help="If you use this flag, program will output mapping of what column belongs to which column ID instead of actually running, useful for figuring out search arguments."
@@ -159,7 +153,6 @@ def GatherArguments():
                          help="If you use this flag, program will log progress in greater detail."
                          )
     return parser.parse_known_args()[0]
-
 
 def main():
     t0 = perf_counter()
@@ -189,15 +182,16 @@ def main():
             return 0
 
         if arguments.output_file is not False:
+            line_term = {"LF":r"\n", "CR":r"\r", "CRLF":r"\r\n"}
             interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,
                                    save_items_json=arguments.generate_items_jsons, refresh_items_json=arguments.refresh_headers)
             if arguments.output_file == 'default':
                 default_filename = f'./export_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.csv'
                 interface.WriteResults(
-                    default_filename, date_format=arguments.date_format)
+                    default_filename, date_format=arguments.date_format, encoding=arguments.encoding, separator=arguments.separator, line_terminator=line_term.get(arguments.line_terminator), quoting=eval(f"csv.QUOTE_{arguments.quoting}"))
             else:
                 interface.WriteResults(arguments.output_file,
-                                       date_format=arguments.date_format)
+                                       date_format=arguments.date_format, encoding=arguments.encoding, separator=arguments.separator, line_terminator=line_term.get(arguments.line_terminator), quoting=eval(f"csv.QUOTE_{arguments.quoting}"))            
             print("export complete")
         if arguments.extract_links is not False:
             if arguments.extract_links == 'default':
@@ -227,7 +221,6 @@ def main():
 
         print(f'done in {(perf_counter() - t0):0.2f} seconds!')
         return 0
-
 
 if __name__ == '__main__':
     exit(main())

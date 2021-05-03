@@ -58,7 +58,10 @@ class _FormsiteAPI:
 
     async def write_content(self, filename, content) -> None:
         async with aiopen(filename, 'wb') as writer:
-            await writer.write(content)
+            try:
+                await writer.write(content)
+            except TypeError:
+                await writer.write(content.encode('utf-8'))
 
     async def fetch_content(self, url, params, page=None) -> bytes:
         if page is not None:

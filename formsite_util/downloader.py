@@ -7,6 +7,7 @@ import asyncio
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientResponseError, InvalidURL
 from aiofiles import open as aiopen
 from dataclasses import dataclass
+from time import perf_counter
 import shutil
 
 @dataclass
@@ -25,11 +26,11 @@ class _FormsiteDownloader:
         self.semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
         self.dl_queue = asyncio.Queue()
         self.Ctimeout = ClientTimeout(total=self.timeout)
-        self.internal_state = WorkerStateTracker(self.links, self.max_concurrent_downloads)
         if self.overwrite_existing == False and len(self.links) > 0:
-            url = list(self.links)[0].rsplit('/',1)[0]
+            url = list(self.links)[0].rsplit('/',1)[0]+"/"
             filenames_in_dl_dir = self._list_files_in_download_dir(url)
             self.links = set(self.links) - filenames_in_dl_dir
+        self.internal_state = WorkerStateTracker(self.links, self.max_concurrent_downloads)
 
     async def Start(self):
         """Starts download of links."""
@@ -50,12 +51,15 @@ class _FormsiteDownloader:
         if self.report_downloads == True:
             self.internal_state.write_all()
 
-
     def _error_handling(self, e: Exception, queue, attempt, url, session):
         if isinstance(e, ClientResponseError):
             if e.status == 403:
+                self.pbar.set_description_str(desc=f"{e}"[:100]+"…", refresh=True)
+                self.internal_state.last_progress_display_update = perf_counter()
                 self.internal_state.mark_fail(url, e)
             elif e.status == 404:
+                self.pbar.set_description_str(desc=f"{e}"[:100]+"…", refresh=True)
+                self.internal_state.last_progress_display_update = perf_counter()
                 self.internal_state.mark_fail(url, e)
             else:
                 self._retry_dl(queue, url, session, attempt)
@@ -64,32 +68,37 @@ class _FormsiteDownloader:
         elif attempt < self.retries:
             self._retry_dl(queue, url, session, attempt)
         else:
+            self.pbar.set_description_str(desc=f"Failed {url}"[:100]+"…", refresh=True)
+            self.internal_state.last_progress_display_update = perf_counter()
             self.internal_state.mark_fail(url, e)
 
     def _retry_dl(self, queue: asyncio.Queue, url, session, attempt):
+        self.pbar.set_description_str(desc=f"Retrying ({attempt}/{self.retries}) download of {url}"[:100]+"…", refresh=True)
+        self.internal_state.last_progress_display_update = perf_counter()
         attempt+=1
         self.internal_state.enqueued += 1
         queue.put_nowait((url, session, attempt))
 
     async def _worker(self, queue: asyncio.Queue, semaphore: asyncio.Semaphore):
         while True:
-            #self.internal_state.display_relevant_info()
-            if self.internal_state.can_terminate_worker():
-                self.internal_state.active_workers -= 1
-                break
-            url, session, attempt = await queue.get()
-            await semaphore.acquire()
-            self.internal_state.start_iteration()
             try:
-                r = await self._download(url, session)
-                if r == 0:
-                    self.internal_state.mark_success(url)
-            except Exception as e:
-                self.pbar.set_description_str(desc=f"{repr(e)}", refresh=True)
-                self._error_handling(e, queue, attempt, url, session)
-                self.pbar.set_description(desc=f"Downloading files", refresh=True)
+                #self.internal_state.display_relevant_info()
+                if self.internal_state.can_terminate_worker():
+                    break
+                url, session, attempt = await queue.get()
+                await semaphore.acquire()
+                if self.internal_state.last_progress_display_update - perf_counter() > 5:
+                    self.pbar.set_description(desc=f"Downloading files…", refresh=True)
+                self.internal_state.start_iteration()
+                try:
+                    r = await self._download(url, session)
+                    if r == 0:
+                        self.internal_state.mark_success(url)
+                except Exception as e:
+                    self._error_handling(e, queue, attempt, url, session)
+            except asyncio.CancelledError:
+                pass
             finally:
-                queue.task_done()
                 semaphore.release()
                 self.internal_state.end_iteration()
         return 0
@@ -102,9 +111,10 @@ class _FormsiteDownloader:
 
     async def _fetch(self, url: str, session: ClientSession, filename:str, target:str, chunk_size:int = 4*1024, in_progress_ext='.tmp'):
         async with session.get(url, timeout=self.Ctimeout) as response:
+            display_name = filename[:20]+"…"+filename[-5:] if len(filename) > 25 else filename[:25]
             #print(f" {response.status} | downloading {url}")
             response.raise_for_status()
-            with tqdm(desc=filename[:25]+"…", total=response.content_length, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
+            with tqdm(desc=display_name, total=response.content_length, leave=False, unit='b', unit_scale=True, unit_divisor=1024, ncols=80) as pbar:
                 async with aiopen(target+in_progress_ext, "wb") as writer:
                     async for chunk in response.content.iter_chunked(chunk_size):
                         await writer.write(chunk)
@@ -167,7 +177,7 @@ class WorkerStateTracker:
         self.success_urls: set = set()
         self.complete_urls: list = list()
         self.update_pbar_callback = None
-
+        self.last_progress_display_update=0
 
     def total_complete(self):
         return self.success + self.failed
@@ -203,6 +213,7 @@ class WorkerStateTracker:
 
     def can_terminate_worker(self):
         if self.try_exit():
+            self.active_workers -= 1
             return True
 
     def mark_success(self, url: str):
