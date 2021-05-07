@@ -5,13 +5,13 @@ with open("README.md", "r", encoding="utf-8") as reader:
 
 setuptools.setup(
     name="formsite-util",
-    version="1.2.7.7",
+    version="1.2.7.9",
     author="Jakub Strnad",
     author_email="jakub.strnad@protonmail.com",
     description="A simple Formsite API python script, used to get results or to download files from your formsite forms.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=["asyncio", "aiofiles", "aiohttp", "openpyxl",
+    install_requires=["asyncio", "aiofiles", "aiohttp","colorama",
                       "pandas", "python_dateutil", "pytz", "regex", "tqdm"],
     keywords=['python', 'formsite', 'fs', 'api',
               'utility', 'util', 'system', 'rest', 'integration'],
