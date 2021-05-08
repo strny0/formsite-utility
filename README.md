@@ -4,6 +4,7 @@ CLI tool + module for formsite automation.
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/31145f1b97934080981a53783803701f)](https://www.codacy.com/gh/strny0/formsite-utility/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=strny0/formsite-utility&amp;utm_campaign=Badge_Grade)
 [![PyPI version](https://badge.fury.io/py/formsite-util.svg)](https://badge.fury.io/py/formsite-util)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/formsite-util)
 
 ## Overview
 

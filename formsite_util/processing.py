@@ -1,7 +1,7 @@
-"""
-processing.py
+"""processing.py
 
-This module handles processing of results from API jsons. Returns a dataframe."""
+This module handles processing of results from API jsons. Returns a dataframe.
+"""
 from datetime import datetime as dt
 from datetime import timedelta as td
 from json import loads
@@ -13,41 +13,49 @@ import pandas as pd
 
 @dataclass
 class _FormsiteProcessing:
+
     """Handles processing of results from API jsons. Invoked with `self.Process()`"""
     items: str
     results: Iterable[str]
     interface: Any
     sort_asc: bool = False
+    display_progress: bool = True
 
     def __post_init__(self):
+        """Loads json strings as json objects."""
         self.items_json = loads(self.items)
         self.results_jsons = [loads(results_page) for results_page in self.results]
         self.timezone_offset = self.interface.params.timezone_offset
         self.columns = self._generate_columns()
-        self.pbar = tqdm(total=4, desc='Processing results', leave=False)
+        self.pbar = tqdm(total=4, desc='Processing results', leave=False) if self.display_progress else None
 
     def _generate_columns(self) -> list:
+        """Generates a list of columns for output dataframe from `items.json`."""
         column_names = pd.DataFrame(self.items_json['items'])['label']
         column_names.name = None
         return column_names.to_list()
 
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
-        self.pbar.update(1)
+        self._update_pbar_progress()
         if len(self.results_jsons[0]['results']) == 0:
             raise Exception("No results to process! FetchResults returned an empty list.")
         final_dataframe = self._init_process(self.results_jsons)
-        self.pbar.update(1)
-        self.pbar.desc = "Sorting results"
-        self.pbar.update(1)
+        self._update_pbar_progress()
+        self._update_pbar_desc(desc="Sorting results")
+        self._update_pbar_progress()
         final_dataframe.sort_values(
             by=['Reference #'], ascending=self.sort_asc, inplace=True)
-        self.pbar.desc = "Results processed"
-        self.pbar.update(1)
-        self.pbar.close()
+        self._update_pbar_desc(desc="Results processed")
+        self._update_pbar_progress()
+        try:
+            self.pbar.close()
+        except AttributeError:
+            pass
         return final_dataframe
 
     def _init_process(self, result_jsons: list):
+        """Loads jsons in results list as dataframes and concats them."""
         dataframes = tuple(pd.DataFrame(
             results_json['results']) for results_json in result_jsons)
         dataframe = pd.concat(dataframes)
@@ -55,6 +63,7 @@ class _FormsiteProcessing:
         return dataframe
 
     def _process(self, dataframe_in_progress: pd.DataFrame) -> pd.DataFrame:
+        """Merges user columns and hardcoded columns in the same way they appear in on formsite."""
         dataframe_in_progress = self._init_dataframe(dataframe_in_progress)
         items_df = pd.DataFrame(self._separate_items(
             dataframe_in_progress['items']), columns=self.columns)
@@ -64,7 +73,7 @@ class _FormsiteProcessing:
         return final_dataframe
 
     def _init_dataframe(self, dataframe_in_progress: pd.DataFrame) -> pd.DataFrame:
-        """Creates a dataframe from a json file for hardcoded columns"""
+        """Creates a dataframe from a json file for hardcoded columns."""
         dataframe_in_progress['date_update'] = dataframe_in_progress['date_update'].apply(
             lambda x: self._string2datetime(x, self.timezone_offset))
         dataframe_in_progress['date_start'] = dataframe_in_progress['date_start'].apply(
@@ -77,8 +86,9 @@ class _FormsiteProcessing:
             lambda x: x.total_seconds())
         return dataframe_in_progress
 
-    def _separate_items(self, unprocessed_dataframe: pd.DataFrame) -> list[list[str]]:
-        """Separates the items array for each submission in results into desired format"""
+    @staticmethod
+    def _separate_items(unprocessed_dataframe: pd.DataFrame) -> list[list[str]]:
+        """Separates the items array for each submission in results into desired format."""
         list_of_rows = []
         for row in unprocessed_dataframe:
             processed_row = []
@@ -97,18 +107,20 @@ class _FormsiteProcessing:
             list_of_rows.append(processed_row)
         return list_of_rows
 
-    def _string2datetime(self, old_date: str, timezone_offset: td) -> dt:
-        """Converts ISO datetime string to datetime class"""
+    @staticmethod
+    def _string2datetime(old_date: str, timezone_offset: td) -> dt:
+        """Converts ISO datetime string to datetime class."""
         try:
-            new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%S"+"Z")
+            new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%SZ") # ISO 8601 standard
             new_date = new_date + timezone_offset
             return new_date
-        except Exception as e:
-            print(repr(e))
+        except Exception as ex:
+            print(repr(ex))
             return old_date
 
-    def _hardcoded_columns_renaming(self, main_dataframe: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Separates hardcoded values into 2 parts, same way as formsite and renames them to the correct values"""
+    @staticmethod
+    def _hardcoded_columns_renaming(main_dataframe: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Separates hardcoded values into 2 parts, same way as formsite and renames them to the correct values."""
         main_df_part1 = main_dataframe[['id', 'result_status']]
         main_df_part1.columns = ['Reference #', 'Status']
         main_df_part2 = main_dataframe[['date_update', 'date_start', 'date_finish',
@@ -118,3 +130,10 @@ class _FormsiteProcessing:
 
         return main_df_part1, main_df_part2
         
+    def _update_pbar_progress(self) -> None:
+        if self.pbar is not None:
+            self.pbar.update(1)
+
+    def _update_pbar_desc(self, desc: str) -> None:
+        if self.pbar is not None:
+            self.pbar.set_description(desc=desc, refresh=True)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""
-cli.py
+"""cli.py
 
-CLI interface using argparse for formsite_util.core"""
+CLI interface using argparse for formsite_util.core
+"""
 import csv
 import sys
 from time import perf_counter
@@ -26,7 +26,10 @@ def gather_args() -> argparse.Namespace:
                "| 404  | Path or object not found.                   |\n"
                "| 422  | Invalid parameter.                          |\n"
                "| 429  | Too many requests or too busy.              |\n"
-               "| 5xx  | Unexpected internal error.                  |\n",
+               "| 5xx  | Unexpected internal error.                  |\n\n"
+               "formsite-util  Copyright (C) 2021  Jakub Strnad\n"
+               "This program comes with ABSOLUTELY NO WARRANTY; for details see LICENSE.md\n"
+               "This is free software, and you are welcome to redistribute it under certain conditions.",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument('-V', '--version', action='version', version="1.2.7.9")
@@ -147,6 +150,8 @@ def gather_args() -> argparse.Namespace:
                            help="By itself, prints all forms, their form ids and status. You can specify a file to save the data into."
                            "\nExample: '-L ./list_of_forms.csv' to output to file or '-L' by itself to print to console."
                            "\nRequires login info. Overrides all other functionality of the program.")
+    g_debug.add_argument('--sort_list_by', default='name', choices={'name', 'form_id', 'resultsCount', 'filesSize'},
+                           help="You may chose what to sort -L commands by in descending order. Defaults to name.")
     g_debug.add_argument('--disable_progressbars', action="store_true", default=False,
                          help="If you use this flag, program will not display progressbars to console.")
     g_debug.add_argument('--generate_results_jsons', action="store_true", default=False,
@@ -154,8 +159,6 @@ def gather_args() -> argparse.Namespace:
                          "\nUseful for debugging purposes.")
     g_debug.add_argument('--generate_items_jsons', action="store_true", default=False,
                          help="If you use this flag, program will not store headers for later reuse.")
-    g_debug.add_argument('--refresh_headers', action="store_true", default=False,
-                         help="If you include this flag, items_formid.json will be re-downloaded with latest headers if they already exist.")
     g_debug.add_argument('-v', '--verbose', action="store_true", default=False,
                          help="If you use this flag, program will log progress in greater detail.")
     return parser.parse_known_args()[0]
@@ -171,7 +174,6 @@ def main():
                                 resultslabels=arguments.resultslabels,
                                 resultsview=arguments.resultsview,
                                 timezone=arguments.timezone,
-                                date_format=arguments.date_format,
                                 sort=arguments.sort)
 
     authorization = FormsiteCredentials(arguments.token,
@@ -181,14 +183,15 @@ def main():
     interface = FormsiteInterface(arguments.form,
                                   authorization,
                                   params=parameters,
-                                  verbose=arguments.verbose)
+                                  verbose=arguments.verbose,
+                                  display_progress=not arguments.disable_progressbars)
 
     if arguments.list_forms is not False:
         if arguments.list_forms == 'default':
-            interface.ListAllForms(display2console=True)
+            interface.ListAllForms(display=True, sort_by=arguments.sort_list_by)
         else:
-            interface.ListAllForms(display2console=True,
-                                   save2csv=arguments.list_forms)
+            interface.ListAllForms(save2csv=arguments.list_forms)
+            print(f'saved list of forms to {arguments.list_forms}')
         return 0
 
     if arguments.list_columns is not False:
@@ -242,7 +245,8 @@ def main():
                                 overwrite_existing=arguments.dont_overwrite_downloads,
                                 report_downloads=arguments.get_download_status,
                                 timeout=arguments.timeout,
-                                retries=arguments.retries)
+                                retries=arguments.retries,
+                                strip_prefix=arguments.stripprefix)
         print("download complete")
 
     if arguments.store_latest_ref is not False:

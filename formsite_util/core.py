@@ -1,5 +1,4 @@
-"""
-core.py 
+"""core.py 
 
 `FormsiteInterface` `FormsiteParams` and `FormsiteCredentials` classes are defined here.
 Author: Jakub Strnad
@@ -105,30 +104,23 @@ def _validate_path(path: str, is_folder=False) -> str:
 
 @dataclass
 class FormsiteParams:
+
     """Parameters class
     This class stores parameters for Formsite requests\n
     `afterref` gets only results greater than integer you provide\n
     `beforeref` gets only results less than integer you provide\n
-    `afterdate` gets only results greater than integer you provide,
-     expects a `datetime object` or string in `ISO 8601`, `yyyy-mm-dd`,
-     `yyyy-mm-dd HH:MM:SS`\n`beforedate` gets only results less than
-     integer you provide, expects a `datetime object` or string in
-     `ISO 8601`, `yyyy-mm-dd`, `yyyy-mm-dd HH:MM:SS`\n`timezone` sets the
-     timezone dates in results are relative to, also affects input dates.
-      expects either an offset string in format `+06:00` or database name
-     `America/Chicago`\n`date_format` using python datetime directives specify
-     what format you want your dates in your csv output file. Defaults to
-     `%Y-%m-%d %H:%M:%S`\n`resultslabels` and `resultsview` More info on
-     Formsite website or FS API of your specific form.\n
-     `sort` ( "asc" | "desc" ) sorts results by reference number in ascending or
-     descending order.
+    `afterdate` gets only results greater than input you provide, expects a `datetime object` or string in `ISO 8601`, `yyyy-mm-dd`, `yyyy-mm-dd HH:MM:SS`\n
+    `beforedate` gets only results less than input you provide, expects a `datetime object` or string in `ISO 8601`, `yyyy-mm-dd`, `yyyy-mm-dd HH:MM:SS`\n
+    `timezone` sets the timezone dates in results are relative to, also affects input dates. Expects either an offset string in format eg. `+06:00` or database name eg. `America/Chicago`\n
+    `date_format` using python datetime directives specify what format you want your dates in your csv output file. Defaults to `%Y-%m-%d %H:%M:%S`\n
+    `resultslabels` and `resultsview` More info on Formsite website or FS API of your specific form.\n
+    `sort` ( "asc" | "desc" ) sorts results by reference number in ascending or descending order.
     """
     afterref: Optional[int] = None
     beforeref: Optional[int] = None
     afterdate: Optional[Union[str, dt]] = None
     beforedate: Optional[Union[str, dt]] = None
     timezone: str = 'local'
-    date_format: Optional[str] = None
     resultslabels: int = 10
     resultsview: int = 11
     sort: str = "desc"
@@ -144,6 +136,7 @@ class FormsiteParams:
     search_method: Optional[str] = None
 
     def __post_init__(self):
+        """Calls `_calculate_tz_offset` internal function."""
         self.timezone_offset, self.local_datetime = _calculate_tz_offset(
             self.timezone)
 
@@ -184,12 +177,14 @@ class FormsiteParams:
 
 @dataclass
 class FormsiteCredentials:
+
     """Class which represents your user credentials for accessing the formsite API."""
     token: str
     server: str
     directory: str
 
     def __post_init__(self) -> None:
+        """Confirms validity of input."""
         self.confirm_validity()
 
     def get_auth(self) -> dict:
@@ -204,6 +199,7 @@ class FormsiteCredentials:
 
 @dataclass
 class FormsiteInterface:
+
     """A base class for interacting with the formsite API.\n
     Documentation: https://pypi.org/project/formsite-util/\n
     `self.Data` pandas dataframe storing your results.\n
@@ -218,7 +214,9 @@ class FormsiteInterface:
     `ListAllForms` lists all forms on formsite, output them to console or save them to a file.\n
     `ListColumns` lists all columns and column IDs of a form you set the interface for.\n
     `DownloadFiles` downloads all files submitted to the form to a folder you specify.\n
-    `WriteLatestRef` writes highest reference number in results to a file you specify."""
+    `WriteLatestRef` writes highest reference number in results to a file you specify.\n
+    `display_progress = False` can be used to disable progressbars in console.
+    """
 
     form_id: str
     auth: FormsiteCredentials
@@ -226,13 +224,14 @@ class FormsiteInterface:
     verbose: bool = False
     Data: Optional[pd.DataFrame] = None
     Links: Optional[set[str]] = None
-    display_progressbars: bool = True
+    display_progress: bool = True
 
     def __post_init__(self):
         """Initializes private variables.\n
         `url_base` is a base url in the format server.formsite.com/api/v2/directory\n
         `url_files` is url_base/files\n
-        Also intializes HTTP headers for authorization and parameters."""
+        Also intializes HTTP headers for authorization and parameters.
+        """
         self.url_base: str = f"https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}"
         self.url_files = f"https://{self.auth.server}.formsite.com/{self.auth.directory}/files/"
         self.auth_dict = self.auth.get_auth()
@@ -240,17 +239,21 @@ class FormsiteInterface:
         self.items_dict = self.params.get_items()
 
     def __enter__(self):
+        """Allows use of context managers."""
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        pass
+        """Allows use of context managers."""
+        del self
 
     def _perform_api_fetch(self,
                            save_results_jsons: bool,
                            save_items_json: bool) -> tuple[str, list[str]]:
         """Entrypoint for performing API calls (asynchronously)."""
-        api_handler = _FormsiteAPI(self, save_results_jsons=save_results_jsons,
-                                   save_items_json=save_items_json)
+        api_handler = _FormsiteAPI(self,
+                                   save_results_jsons=save_results_jsons,
+                                   save_items_json=save_items_json,
+                                   display_progress=self.display_progress)
         coro = api_handler.Start()
         return asyncio.get_event_loop().run_until_complete(coro)
 
@@ -260,15 +263,19 @@ class FormsiteInterface:
             sort = False
         else:
             sort = True
-        processing_handler = _FormsiteProcessing(
-            items, results, self, sort_asc=sort)
+        processing_handler = _FormsiteProcessing(items,
+                                                 results,
+                                                 self,
+                                                 sort_asc=sort,
+                                                 display_progress=self.display_progress)
         return processing_handler.Process()
 
     def FetchResults(self,
                      save_results_jsons: bool = False,
                      save_items_json: bool = False) -> None:
         """Fetches results from formsite API according to specified parameters.\n
-        Updates the `self.Data` variable which stores the dataframe."""
+        Updates the `self.Data` variable which stores the dataframe.
+        """
         assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
         items, results = self._perform_api_fetch(save_results_jsons=save_results_jsons,
                                                  save_items_json=save_items_json)
@@ -284,8 +291,7 @@ class FormsiteInterface:
         return self.Data
 
     def ExtractLinks(self, links_filter_re: str = r'.+') -> None:
-        """Stores a set of links in `self.Links` of files saved on formsite servers
-        , that were submitted to the specified form."""
+        """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
         if self.Data is None:
             self.FetchResults()
         links_re = fr'(https\:\/\/{self.auth.server}\.formsite\.com\/{self.auth.directory}\/files\/.*)'
@@ -307,6 +313,15 @@ class FormsiteInterface:
                 except AttributeError:
                     pass
 
+    def human_friendly_filesize(self, number: int) -> str:
+        """Converts a number (filesize in bytes) to more readable filesize with units."""
+        reductions = 0
+        while number >= 1024:
+            number = number / 1024
+            reductions += 1
+        unit = {0: '', 1:'K', 2:'M', 3:'G', 4:'T'}
+        return f"{number:0.2f} {unit.get(reductions, None)}B"
+
     async def _list_all_forms(self) -> pd.DataFrame:
         url_forms = f"{self.url_base}/forms"
         async with request("GET", url_forms, headers=self.auth_dict) as response:
@@ -317,24 +332,36 @@ class FormsiteInterface:
             for row in all_forms_json:
                 for val in row["stats"]:
                     row[val] = row['stats'][val]
-            forms_df = pd.DataFrame(all_forms_json,
-                                    columns=['name', 'state', 'directory', 'resultsCount', 'filesSize'])
-            forms_df['form id'] = forms_df.pop('directory')
-            forms_df.sort_values(by=['name'], inplace=True)
-            forms_df.reset_index(inplace=True, drop=True)
+            for row in all_forms_json:
+                for val in row["publish"]:
+                    row[val] = row['publish'][val]
+            forms_df = pd.DataFrame(all_forms_json,columns=['name', 'state', 'directory', 'resultsCount', 'filesSize', 'embed_code', 'link'])
+            forms_df['form_id'] = forms_df.pop('directory')
             return forms_df
 
     def ListAllForms(self,
-                     display2console: bool = False,
+                     sort_by: str = 'name',
+                     display: bool = False,
                      save2csv: Union[str, bool] = False) -> None:
-        """Prints name, id, results count, filesize and status of all forms into console or csv."""
+        """Prints name, id, results count, filesize and status of all forms into console or csv.
+        You can sort in descending order by `name` `form_id` `resultsCount` `filesSize`.
+        """
         forms_df = asyncio.get_event_loop().run_until_complete(self._list_all_forms())
-        if display2console:
+        if display:
             pd.set_option('display.max_rows', None)
+            pd.set_option('display.max_colwidth', 42) # ensures width < 80 cols
+            forms_df.pop('embed_code')
+            forms_df.pop('link')
+            forms_df.pop('state')
+            forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
+            forms_df['filesSize'] = forms_df['filesSize'].apply(lambda x: self.human_friendly_filesize(int(x)))
+            forms_df.set_index('name',inplace=True)
             print(forms_df)
         if save2csv is not False:
+            forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
+            forms_df.set_index('name',inplace=True)
             output_file = _validate_path(str(save2csv))
-            forms_df.to_csv(output_file, encoding='utf-8', index=False)
+            forms_df.to_csv(output_file, encoding='utf-8')
 
     def ReturnLinks(self, links_regex: str = r'.+') -> set[str]:
         """Returns a set of urls of files saved on formsite servers."""
@@ -346,7 +373,7 @@ class FormsiteInterface:
                    destination_path: str,
                    links_regex: str = r'.+',
                    sort_descending: bool = True) -> None:
-        """Writes links extracted with `self.ExtractLinks()` to a .txt file"""
+        """Writes links extracted with `self.ExtractLinks()` to a .txt file."""
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_re=links_regex)
         output_file = _validate_path(destination_path)
@@ -363,9 +390,11 @@ class FormsiteInterface:
                       overwrite_existing: bool = True,
                       report_downloads: bool = False,
                       timeout: int = 80,
-                      retries: int = 1) -> None:
-        """Downloads files saved on formsite servers, that were submitted to the specified form.
-        \nPlease customize `max_concurrent_downloads` to your specific use case."""
+                      retries: int = 1,
+                      strip_prefix: bool = False) -> None:
+        """Downloads files saved on formsite servers, that were submitted to the specified form.\n
+        Please customize `max_concurrent_downloads` to your specific use case.
+        """
         if self.Links is None:
             self.ExtractLinks(links_filter_re=links_regex)
         assert len(self.Links) > 0, f"There are no files to be downloaded for form {self.form_id}"
@@ -378,7 +407,9 @@ class FormsiteInterface:
                                                filename_regex=filename_regex,
                                                report_downloads=report_downloads,
                                                timeout=timeout,
-                                               retries=retries)
+                                               retries=retries,
+                                               display_progress=self.display_progress,
+                                               strip_prefix=strip_prefix)
         asyncio.get_event_loop().run_until_complete(download_handler.Start())
 
     def ListColumns(self) -> None:
@@ -402,7 +433,8 @@ class FormsiteInterface:
                      date_format: str = "%Y-%m-%d %H:%M:%S",
                      quoting: int = csv.QUOTE_MINIMAL) -> None:
         """Writes `self.Data` to a file based on provided extension.\n
-        Supported output formats are (.csv|.xlsx|.pkl|.pickle|.json|.parquet|.md|.txt)"""
+        Supported output formats are (`.csv`|`.xlsx`|`.pkl`|`.pickle`|`.json`|`.parquet`|`.md`|`.txt`)
+        """
         if self.Data is None:
             self.FetchResults()
         output_file = _validate_path(destination_path)

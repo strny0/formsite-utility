@@ -1,8 +1,7 @@
-"""
-downloader.py
+"""downloader.py
 
 this module contains the functionality for downloading downloading
-many urls concurrently with a worker-semaphore asyncio approach
+many urls concurrently with a worker queue+semaphore asyncio approach
 """
 import os
 import re
@@ -18,18 +17,22 @@ from aiofiles import open as aiopen
 
 @dataclass
 class _FormsiteDownloader:
-    """Handles the distribution of workload across DownloadWorkers."""
+
+    """Handles the distribution of downlaod tasks across DownloadWorkers."""
     download_folder: str
     links: Iterable[str]
     max_concurrent_downloads: int = 10
     timeout: int = 80
     retries: int = 1
+    filename_regex: str = r''
+    strip_prefix: bool = False
     overwrite_existing: bool = True
     report_downloads: bool = False
     write_failed: bool = True
-    filename_regex: str = r''
+    display_progress: bool = True
 
     def __post_init__(self):
+        """Initializes internal variables."""
         self.filename_compiled_regex = re.compile(self.filename_regex)
         self.semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
         self.dl_queue = asyncio.Queue()
@@ -45,24 +48,25 @@ class _FormsiteDownloader:
 
     async def Start(self) -> None:
         """Starts download of links."""
-        with tqdm(total=len(self.links), desc="Downloading files", unit='f', leave=False) as pbar:
-            async with ClientSession(connector=TCPConnector(limit=0)) as session:
-                self.internal_state.update_pbar_callback = pbar.update
-                for link in self.links:
-                    self.dl_queue.put_nowait((link, 0))
-                tasks = [asyncio.ensure_future(
-                    DownloadWorker(self.download_folder,
-                                   self.dl_queue,
-                                   self.semaphore,
-                                   session,
-                                   self.internal_state,
-                                   timeout=self.timeout,
-                                   retries=self.retries,
-                                   pbar=pbar,
-                                   filename_regex=self.filename_regex).main())
-                         for _ in range(self.max_concurrent_downloads)]
-                await asyncio.gather(*tasks)
-            pbar.set_description(desc="Download complete", refresh=True)
+        pbar = tqdm(total=len(self.links), desc="Downloading files", unit='f', leave=False) if self.display_progress else None
+        async with ClientSession(connector=TCPConnector(limit=0)) as session:
+            self.internal_state.update_pbar_callback = pbar.update if pbar is not None else None
+            for link in self.links:
+                self.dl_queue.put_nowait((link, 0))
+            tasks = [asyncio.ensure_future(
+                DownloadWorker(self.download_folder,
+                               self.dl_queue,
+                               self.semaphore,
+                               session,
+                               self.internal_state,
+                               timeout=self.timeout,
+                               retries=self.retries,
+                               pbar=pbar,
+                               filename_regex=self.filename_regex,
+                               strip_prefix=self.strip_prefix).main())
+                     for _ in range(self.max_concurrent_downloads)]
+            await asyncio.gather(*tasks)
+        pbar.close()
         if self.internal_state.failed > 0 and self.write_failed:
             self.internal_state.write_failed()
         if self.report_downloads:
@@ -77,6 +81,7 @@ class _FormsiteDownloader:
 
 @dataclass
 class DownloadWorkerState:
+
     """Contains methods that track internal downlaod progressa cross downloader workers."""
     urls: Iterable[str]
     active_workers: int
@@ -170,7 +175,8 @@ class DownloadWorkerState:
 
 @dataclass
 class DownloadWorker:
-    """download_folder is a path,
+
+    """download_folder is a path to download directory,
     \nqueue, semaphore, session, internal state and pbar are shared across all workers
     """
     download_folder: str
@@ -182,10 +188,12 @@ class DownloadWorker:
     retries: int = 1
     pbar: tqdm = None
     filename_regex: str = r''
+    strip_prefix: bool = False
 
     def __post_init__(self):
         self.client_timeout = ClientTimeout(total=self.timeout)
         self.filename_compiled_regex = re.compile(self.filename_regex)
+        self.display_progress = None if self.pbar is None else True
 
     async def main(self) -> int:
         """Entrypoint for launching the download process."""
@@ -212,7 +220,7 @@ class DownloadWorker:
         return 0
 
     async def _fetch(self, url: str, filename: str, target: str, chunk_size: int = 4*1024,
-                     in_progress_ext: str = '.tmp', show_pbar: bool = True) -> int:
+                     in_progress_ext: str = '.tmp') -> int:
         """The core download function with `session.get` request."""
         display_name = filename[:20]+"…"+filename[-5:] if len(filename) > 25 else filename[:25]
         async with self.session.get(url, timeout=self.client_timeout) as response:
@@ -223,12 +231,16 @@ class DownloadWorker:
                         unit='b',
                         unit_scale=True,
                         unit_divisor=1024,
-                        ncols=80) if show_pbar else None
+                        ncols=80) if self.display_progress else None
             async with aiopen(target+in_progress_ext, "wb") as writer:
                 async for chunk in response.content.iter_chunked(chunk_size):
                     await writer.write(chunk)
-                    pbar.update(len(chunk)) if pbar is not None else None
-        pbar.close()
+                    if pbar is not None:
+                        pbar.update(len(chunk))
+        try:
+            pbar.close()
+        except AttributeError:
+            pass
         shutil.move(target+in_progress_ext, target)
         return 0
 
@@ -276,6 +288,8 @@ class DownloadWorker:
     def get_filename(self, url: str) -> tuple[str, str]:
         """Gets filename from url. Returns filename and path+filename as target."""
         filename = f"{url.split('/')[-1:][0]}"
+        if self.strip_prefix:
+            filename = re.sub(r'^f-[\d]*-[\d]*-', r'', filename)
         if self.filename_compiled_regex.pattern != '':
             filename = self._regex_substitution(filename, self.filename_compiled_regex)
             target = f"{self.download_folder}/{filename}"
@@ -283,18 +297,6 @@ class DownloadWorker:
         else:
             target = f"{self.download_folder}/{filename}"
         return filename, target
-
-    def _regex_substitution(self, filename: str, filename_regex):
-        """Replaces characters that dont match regex with nothing."""
-        try:
-            temp = filename.rsplit('.', 1)
-            try:
-                filename = f"{filename_regex.sub('', temp[0])}.{temp[1]}"
-            except:
-                filename = f"{filename_regex.sub('', temp[0])}"
-        except:
-            filename = f"{filename_regex.sub('', filename)}"
-        return filename
 
     def _check_if_file_exists(self, filename: str, appended_number: int = 0) -> str:
         """If `overwrite_downloads is False`, checks which URLs to omit based on filenames."""
@@ -308,4 +310,17 @@ class DownloadWorker:
             except IndexError:
                 filename = temp[0] + f"_{appended_number+1}"
             filename = self._check_if_file_exists(filename, appended_number=appended_number+1)
+        return filename
+
+    @staticmethod
+    def _regex_substitution(filename: str, filename_regex):
+        """Replaces characters that dont match regex with nothing."""
+        try:
+            temp = filename.rsplit('.', 1)
+            try:
+                filename = f"{filename_regex.sub('', temp[0])}.{temp[1]}"
+            except Exception as ex:
+                filename = f"{filename_regex.sub('', temp[0])}"
+        except Exception as ex:
+            filename = f"{filename_regex.sub('', filename)}"
         return filename
