@@ -8,7 +8,7 @@ import csv
 import sys
 from time import perf_counter
 import argparse
-from core import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
