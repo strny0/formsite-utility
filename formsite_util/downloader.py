@@ -1,4 +1,5 @@
-"""downloader.py
+"""
+downloader.py
 
 this module contains the functionality for downloading downloading
 many urls concurrently with a worker queue+semaphore asyncio approach
@@ -282,7 +283,7 @@ class DownloadWorker:
 
     def _update_pbar(self, desc: str = ""):
         """Updates main download progress bar with a provided description."""
-        if self.pbar is not None:
+        if isinstance(self.pbar, tqdm):
             self.pbar.set_description(desc=desc, refresh=True)
 
     def get_filename(self, url: str) -> tuple:

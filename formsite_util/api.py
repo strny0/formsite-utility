@@ -1,4 +1,5 @@
-"""api.py
+"""
+api.py
 
 This module contains a class that handles API requests to Formsite API.
 """
@@ -116,9 +117,9 @@ class _FormsiteAPI:
         return content
 
     def _update_pbar_progress(self) -> None:
-        if self.pbar is not None:
+        if isinstance(self.pbar, tqdm):
             self.pbar.update(1)
 
     def _update_pbar_desc(self, desc: str) -> None:
-        if self.pbar is not None:
+        if isinstance(self.pbar, tqdm):
             self.pbar.set_description(desc=desc, refresh=True)
