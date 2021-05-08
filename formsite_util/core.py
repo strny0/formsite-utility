@@ -1,4 +1,5 @@
-"""core.py 
+"""
+core.py 
 
 `FormsiteInterface` `FormsiteParams` and `FormsiteCredentials` classes are defined here.
 Author: Jakub Strnad
@@ -17,9 +18,9 @@ import re
 import pandas as pd
 from pytz import UnknownTimeZoneError, timezone as pytztimezone
 from aiohttp import request
-from formsite_util.downloader import _FormsiteDownloader
-from formsite_util.processing import _FormsiteProcessing
-from formsite_util.api import _FormsiteAPI
+from downloader import _FormsiteDownloader
+from processing import _FormsiteProcessing
+from api import _FormsiteAPI
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     if isinstance(date, dt):

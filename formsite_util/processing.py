@@ -1,4 +1,5 @@
-"""processing.py
+"""
+processing.py
 
 This module handles processing of results from API jsons. Returns a dataframe.
 """
@@ -13,7 +14,7 @@ import pandas as pd
 
 @dataclass
 class _FormsiteProcessing:
-
+    
     """Handles processing of results from API jsons. Invoked with `self.Process()`"""
     items: str
     results: Iterable[str]
@@ -114,8 +115,7 @@ class _FormsiteProcessing:
             new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%SZ") # ISO 8601 standard
             new_date = new_date + timezone_offset
             return new_date
-        except Exception as ex:
-            print(repr(ex))
+        except TypeError:
             return old_date
 
     @staticmethod
@@ -129,11 +129,11 @@ class _FormsiteProcessing:
                                  'Duration (s)', 'User', 'Browser', 'Device', 'Referrer']
 
         return main_df_part1, main_df_part2
-        
+
     def _update_pbar_progress(self) -> None:
-        if self.pbar is not None:
+        if isinstance(self.pbar, tqdm):
             self.pbar.update(1)
 
     def _update_pbar_desc(self, desc: str) -> None:
-        if self.pbar is not None:
+        if isinstance(self.pbar, tqdm):
             self.pbar.set_description(desc=desc, refresh=True)

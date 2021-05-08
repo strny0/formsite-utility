@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""cli.py
+"""
+cli.py
 
 CLI interface using argparse for formsite_util.core
 """
@@ -7,7 +8,7 @@ import csv
 import sys
 from time import perf_counter
 import argparse
-from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from core import FormsiteParams, FormsiteCredentials, FormsiteInterface
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
