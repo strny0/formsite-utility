@@ -6,7 +6,7 @@ This module handles processing of results from API jsons. Returns a dataframe.
 from datetime import datetime as dt
 from datetime import timedelta as td
 from json import loads
-from typing import Any, Iterable
+from typing import Any, Iterable, List, Tuple
 from dataclasses import dataclass
 from tqdm.asyncio import tqdm
 import pandas as pd
@@ -14,7 +14,7 @@ import pandas as pd
 
 @dataclass
 class _FormsiteProcessing:
-    
+
     """Handles processing of results from API jsons. Invoked with `self.Process()`"""
     items: str
     results: Iterable[str]
@@ -30,7 +30,7 @@ class _FormsiteProcessing:
         self.columns = self._generate_columns()
         self.pbar = tqdm(total=4, desc='Processing results', leave=False) if self.display_progress else None
 
-    def _generate_columns(self) -> list:
+    def _generate_columns(self) -> List[str]:
         """Generates a list of columns for output dataframe from `items.json`."""
         column_names = pd.DataFrame(self.items_json['items'])['label']
         column_names.name = None
@@ -55,7 +55,7 @@ class _FormsiteProcessing:
             pass
         return final_dataframe
 
-    def _init_process(self, result_jsons: list):
+    def _init_process(self, result_jsons: List[str]) -> pd.DataFrame:
         """Loads jsons in results list as dataframes and concats them."""
         dataframes = tuple(pd.DataFrame(
             results_json['results']) for results_json in result_jsons)
@@ -88,7 +88,7 @@ class _FormsiteProcessing:
         return dataframe_in_progress
 
     @staticmethod
-    def _separate_items(unprocessed_dataframe: pd.DataFrame) -> list:
+    def _separate_items(unprocessed_dataframe: pd.DataFrame) -> List[List[Any]]:
         """Separates the items array for each submission in results into desired format."""
         list_of_rows = []
         for row in unprocessed_dataframe:
@@ -119,7 +119,7 @@ class _FormsiteProcessing:
             return old_date
 
     @staticmethod
-    def _hardcoded_columns_renaming(main_dataframe: pd.DataFrame) -> tuple:
+    def _hardcoded_columns_renaming(main_dataframe: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Separates hardcoded values into 2 parts, same way as formsite and renames them to the correct values."""
         main_df_part1 = main_dataframe[['id', 'result_status']]
         main_df_part1.columns = ['Reference #', 'Status']

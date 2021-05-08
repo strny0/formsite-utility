@@ -3,7 +3,7 @@ api.py
 
 This module contains a class that handles API requests to Formsite API.
 """
-from typing import Any
+from typing import Any, List, Optional, Tuple
 from dataclasses import dataclass
 import asyncio
 from tqdm.asyncio import tqdm
@@ -37,7 +37,7 @@ class _FormsiteAPI:
         self.total_pages: int = 1
         self.check_pages: bool = True
 
-    async def Start(self, only_items: bool = False) -> tuple:
+    async def Start(self, only_items: bool = False) -> Tuple[str, Optional[List[str]]]:
         """Performs all API calls to formsite servers asynchronously"""
         items, results = (None, [])
         async with ClientSession(headers=self.auth_dict, timeout=ClientTimeout(total=None), connector=TCPConnector(limit=None)) as self.session:

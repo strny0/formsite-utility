@@ -13,7 +13,7 @@ from datetime import timedelta as td
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Optional, Set, Union, Tuple, Dict, List
 import re
 import pandas as pd
 from pytz import UnknownTimeZoneError, timezone as pytztimezone
@@ -44,7 +44,7 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
                         'yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format')
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
-def _calculate_tz_offset(timezone: str) -> tuple:
+def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
     """Returns timedelta offset of local datetime to target timezone and local datetime."""
     local_date = dt.now()
     utc_date = dt.utcnow()
@@ -74,7 +74,7 @@ def _calculate_tz_offset(timezone: str) -> tuple:
         raise Exception(f"'{timezone}' is invalid tz databse name or offset.")
     return offset_from_local, local_date
 
-def _sanitize_argument(argument: Any, chars2remove: list) -> str:
+def _sanitize_argument(argument: Any, chars2remove: List[str]) -> str:
     """Sanitizes input from `formsite_util.cli`."""
     for _k, _v in chars2remove:
         argument = str(argument).replace(_k, _v)
@@ -249,16 +249,16 @@ class FormsiteInterface:
 
     def _perform_api_fetch(self,
                            save_results_jsons: bool,
-                           save_items_json: bool) -> tuple:
+                           save_items_json: bool) -> Tuple[str, Optional[List[str]]]:
         """Entrypoint for performing API calls (asynchronously)."""
         api_handler = _FormsiteAPI(self,
                                    save_results_jsons=save_results_jsons,
                                    save_items_json=save_items_json,
                                    display_progress=self.display_progress)
-        coro = api_handler.Start()
-        return asyncio.get_event_loop().run_until_complete(coro)
+        api_coroutine = api_handler.Start()
+        return asyncio.get_event_loop().run_until_complete(api_coroutine)
 
-    def _assemble_dataframe(self, items: str, results: list) -> pd.DataFrame:
+    def _assemble_dataframe(self, items: str, results: List[pd.DataFrame]) -> pd.DataFrame:
         """Returns a pandas dataframe from received API data."""
         if self.params.sort == 'desc':
             sort = False
@@ -364,7 +364,7 @@ class FormsiteInterface:
             output_file = _validate_path(str(save2csv))
             forms_df.to_csv(output_file, encoding='utf-8')
 
-    def ReturnLinks(self, links_regex: str = r'.+') -> set:
+    def ReturnLinks(self, links_regex: str = r'.+') -> Set[str]:
         """Returns a set of urls of files saved on formsite servers."""
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_re=links_regex)

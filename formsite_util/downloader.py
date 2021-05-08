@@ -10,7 +10,7 @@ from pathlib import Path
 from time import perf_counter
 import shutil
 import asyncio
-from typing import Iterable
+from typing import Iterable, Set, Tuple
 from dataclasses import dataclass
 from tqdm.asyncio import tqdm
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientResponseError, InvalidURL
@@ -73,7 +73,7 @@ class _FormsiteDownloader:
         if self.report_downloads:
             self.internal_state.write_all()
 
-    def _list_files_in_download_dir(self, url: str) -> set:
+    def _list_files_in_download_dir(self, url: str) -> Set[str]:
         """Lists all files in `self.download_folder`, inserts `url` before the filename."""
         filenames_in_dir = set()
         for file in os.listdir(self.download_folder):
@@ -153,7 +153,7 @@ class DownloadWorkerState:
         """Increments internal counter to match completed downloads."""
         self._mark(url, repr(fail_exception), self.failed_urls, self.failed)
 
-    def _mark(self, url: str, status: str, add_to: set, count_to: int):
+    def _mark(self, url: str, status: str, add_to: Set[str], count_to: int):
         """Base method for changing internal state counts."""
         self.complete_urls.append(f"{url};\t{status}")
         add_to.add(f"{url}")
@@ -170,7 +170,7 @@ class DownloadWorkerState:
         self.enqueued -= 1
         self.in_progress += 1
 
-    def get_failed_url_diff(self) -> set:
+    def get_failed_url_diff(self) -> Set[str]:
         """Returns a difference between all input URLs and successfully downloaded urls."""
         return set(self.urls) - set(self.success_urls)
 
@@ -286,7 +286,7 @@ class DownloadWorker:
         if isinstance(self.pbar, tqdm):
             self.pbar.set_description(desc=desc, refresh=True)
 
-    def get_filename(self, url: str) -> tuple:
+    def get_filename(self, url: str) -> Tuple[str, str]:
         """Gets filename from url. Returns filename and path+filename as target."""
         filename = f"{url.split('/')[-1:][0]}"
         if self.strip_prefix:

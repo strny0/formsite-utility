@@ -11,7 +11,7 @@ setuptools.setup(
     description='A simple Formsite API python script, used to get results or to download files from your formsite forms.',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    install_requires=['asyncio', 'aiofiles', 'aiohttp','colorama', 'dataclasses',
+    install_requires=['asyncio', 'aiofiles', 'aiohttp','colorama', 'dataclasses', 'typing',
                       'pandas', 'python_dateutil', 'pytz', 'regex', 'tqdm'],
     keywords=['python', 'formsite', 'fs', 'api', 'automation', 'download', 'form', 'python3',
               'utility', 'util', 'system', 'rest', 'integration', 'links', 'url', 'urls'],
