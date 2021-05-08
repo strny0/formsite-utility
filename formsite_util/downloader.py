@@ -169,7 +169,7 @@ class DownloadWorkerState:
         self.enqueued -= 1
         self.in_progress += 1
 
-    def get_failed_url_diff(self) -> set[str]:
+    def get_failed_url_diff(self) -> set:
         """Returns a difference between all input URLs and successfully downloaded urls."""
         return set(self.urls) - set(self.success_urls)
 
@@ -285,7 +285,7 @@ class DownloadWorker:
         if self.pbar is not None:
             self.pbar.set_description(desc=desc, refresh=True)
 
-    def get_filename(self, url: str) -> tuple[str, str]:
+    def get_filename(self, url: str) -> tuple:
         """Gets filename from url. Returns filename and path+filename as target."""
         filename = f"{url.split('/')[-1:][0]}"
         if self.strip_prefix:

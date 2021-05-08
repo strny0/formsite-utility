@@ -87,7 +87,7 @@ class _FormsiteProcessing:
         return dataframe_in_progress
 
     @staticmethod
-    def _separate_items(unprocessed_dataframe: pd.DataFrame) -> list[list[str]]:
+    def _separate_items(unprocessed_dataframe: pd.DataFrame) -> list:
         """Separates the items array for each submission in results into desired format."""
         list_of_rows = []
         for row in unprocessed_dataframe:
@@ -119,7 +119,7 @@ class _FormsiteProcessing:
             return old_date
 
     @staticmethod
-    def _hardcoded_columns_renaming(main_dataframe: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def _hardcoded_columns_renaming(main_dataframe: pd.DataFrame) -> tuple:
         """Separates hardcoded values into 2 parts, same way as formsite and renames them to the correct values."""
         main_df_part1 = main_dataframe[['id', 'result_status']]
         main_df_part1.columns = ['Reference #', 'Status']

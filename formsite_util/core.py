@@ -43,7 +43,7 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
                         'yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format')
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
-def _calculate_tz_offset(timezone: str) -> tuple[td, dt]:
+def _calculate_tz_offset(timezone: str) -> tuple:
     """Returns timedelta offset of local datetime to target timezone and local datetime."""
     local_date = dt.now()
     utc_date = dt.utcnow()
@@ -73,7 +73,7 @@ def _calculate_tz_offset(timezone: str) -> tuple[td, dt]:
         raise Exception(f"'{timezone}' is invalid tz databse name or offset.")
     return offset_from_local, local_date
 
-def _sanitize_argument(argument: Any, chars2remove: list[tuple[str, str]]) -> str:
+def _sanitize_argument(argument: Any, chars2remove: list) -> str:
     """Sanitizes input from `formsite_util.cli`."""
     for _k, _v in chars2remove:
         argument = str(argument).replace(_k, _v)
@@ -223,7 +223,7 @@ class FormsiteInterface:
     params: FormsiteParams = FormsiteParams()
     verbose: bool = False
     Data: Optional[pd.DataFrame] = None
-    Links: Optional[set[str]] = None
+    Links: Optional[set] = None
     display_progress: bool = True
 
     def __post_init__(self):
@@ -248,7 +248,7 @@ class FormsiteInterface:
 
     def _perform_api_fetch(self,
                            save_results_jsons: bool,
-                           save_items_json: bool) -> tuple[str, list[str]]:
+                           save_items_json: bool) -> tuple:
         """Entrypoint for performing API calls (asynchronously)."""
         api_handler = _FormsiteAPI(self,
                                    save_results_jsons=save_results_jsons,
@@ -363,7 +363,7 @@ class FormsiteInterface:
             output_file = _validate_path(str(save2csv))
             forms_df.to_csv(output_file, encoding='utf-8')
 
-    def ReturnLinks(self, links_regex: str = r'.+') -> set[str]:
+    def ReturnLinks(self, links_regex: str = r'.+') -> set:
         """Returns a set of urls of files saved on formsite servers."""
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_re=links_regex)

@@ -36,7 +36,7 @@ class _FormsiteAPI:
         self.total_pages: int = 1
         self.check_pages: bool = True
 
-    async def Start(self, only_items: bool = False) -> tuple[str, list[str]]:
+    async def Start(self, only_items: bool = False) -> tuple:
         """Performs all API calls to formsite servers asynchronously"""
         items, results = (None, [])
         async with ClientSession(headers=self.auth_dict, timeout=ClientTimeout(total=None), connector=TCPConnector(limit=None)) as self.session:
@@ -76,7 +76,7 @@ class _FormsiteAPI:
             except TypeError:
                 await writer.write(content.encode('utf-8'))
 
-    async def fetch_content(self, url: str, params: dict[str, Any], page: int = None) -> str:
+    async def fetch_content(self, url: str, params: dict, page: int = None) -> str:
         """Base method for interacting with the formsite api with aiohttp GET request. Returns content of the response."""
         if page is not None:
             params['page'] = page
