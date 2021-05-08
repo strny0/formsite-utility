@@ -33,7 +33,7 @@ def gather_args() -> argparse.Namespace:
                "This is free software, and you are welcome to redistribute it under certain conditions.",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version', version="1.2.7.9")
+    parser.add_argument('-V', '--version', action='version', version="1.2.8.post0")
     g_auth = parser.add_argument_group('Authorization')
     g_params = parser.add_argument_group('Results Parameters')
     g_output = parser.add_argument_group('Output file')
