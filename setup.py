@@ -1,11 +1,12 @@
 import setuptools
+from formsite_util.core import __version__
 
 with open('README.md', 'r', encoding='utf-8') as reader:
     long_description = reader.read()
 
 setuptools.setup(
     name='formsite-util',
-    version='1.2.8.post0',
+    version=__version__,
     author='Jakub Strnad',
     author_email='jakub.strnad@protonmail.com',
     description='A simple Formsite API python script, used to get results or to download files from your formsite forms.',

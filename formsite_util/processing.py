@@ -32,15 +32,18 @@ class _FormsiteProcessing:
 
     def _generate_columns(self) -> List[str]:
         """Generates a list of columns for output dataframe from `items.json`."""
+        assert isinstance(self.items_json, dict), "items.json is empty"
+        assert len(self.items_json) > 0, "items.json is empty"
         column_names = pd.DataFrame(self.items_json['items'])['label']
         column_names.name = None
-        return column_names.to_list()
+        colmns_list = column_names.to_list()
+        assert len(colmns_list) > 0, "Columns list is empty"
+        return colmns_list
 
     def Process(self) -> pd.DataFrame:
         """Return a dataframe in the same format as a regular formsite export."""
         self._update_pbar_progress()
-        if len(self.results_jsons[0]['results']) == 0:
-            raise Exception("No results to process! FetchResults returned an empty list.")
+        assert len(self.results_jsons[0]['results']) > 0, "No results to process! FetchResults returned an empty list."
         final_dataframe = self._init_process(self.results_jsons)
         self._update_pbar_progress()
         self._update_pbar_desc(desc="Sorting results")
@@ -53,6 +56,8 @@ class _FormsiteProcessing:
             self.pbar.close()
         except AttributeError:
             pass
+
+        assert final_dataframe.shape[0] > 0, "processing handler returned an empty DataFrame"
         return final_dataframe
 
     def _init_process(self, result_jsons: List[str]) -> pd.DataFrame:

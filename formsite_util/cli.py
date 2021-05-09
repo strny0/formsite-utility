@@ -8,11 +8,12 @@ import csv
 import sys
 from time import perf_counter
 import argparse
-from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface
+from formsite_util.core import FormsiteParams, FormsiteCredentials, FormsiteInterface, __version__
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
     parser = argparse.ArgumentParser(
+        prog="formsite-util",
         description="Github of author: https://github.com/strny0/formsite-utility\n"
                     "This program performs an export of a specified formsite form with parameters.\n"
                     "A faster alternative to a manual export from the formsite website, that can be used for workflow automation.\n"
@@ -33,7 +34,7 @@ def gather_args() -> argparse.Namespace:
                "This is free software, and you are welcome to redistribute it under certain conditions.",
         formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument('-V', '--version', action='version', version="1.2.8.post0")
+    parser.add_argument('-V', '--version', action='version', version=f"%(prog)s {__version__}\n")
     g_auth = parser.add_argument_group('Authorization')
     g_params = parser.add_argument_group('Results Parameters')
     g_output = parser.add_argument_group('Output file')

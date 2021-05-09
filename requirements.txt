@@ -5,4 +5,5 @@ regex>=2021.4.4
 aiohttp>=3.7.4.post0
 aiofiles>=0.6.0
 dataclasses>=0.8
+typing
 python_dateutil>=2.8.1

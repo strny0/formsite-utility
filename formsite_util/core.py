@@ -22,6 +22,8 @@ from formsite_util.downloader import _FormsiteDownloader
 from formsite_util.processing import _FormsiteProcessing
 from formsite_util.api import _FormsiteAPI
 
+__version__ = '1.2.8.post0'
+
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     if isinstance(date, dt):
         date = date + timezone_offset
