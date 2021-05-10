@@ -13,6 +13,7 @@ from datetime import timedelta as td
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
+import sys
 from typing import Any, Optional, Set, Union, Tuple, Dict, List
 import re
 import pandas as pd
@@ -22,7 +23,7 @@ from formsite_util.downloader import _FormsiteDownloader
 from formsite_util.processing import _FormsiteProcessing
 from formsite_util.api import _FormsiteAPI
 
-__version__ = '1.2.8.post0'
+__version__ = '1.2.8.post1'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     if isinstance(date, dt):
@@ -352,14 +353,16 @@ class FormsiteInterface:
         forms_df = asyncio.get_event_loop().run_until_complete(self._list_all_forms())
         if display:
             pd.set_option('display.max_rows', None)
+            pd.set_option('display.max_columns', None)
+            pd.set_option('display.width', None)
             pd.set_option('display.max_colwidth', 42) # ensures width < 80 cols
-            forms_df.pop('embed_code')
-            forms_df.pop('link')
-            forms_df.pop('state')
-            forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
+            forms_df = forms_df[['name','resultsCount','filesSize','form_id']]
+            forms_df.sort_values(by=[sort_by], inplace=True, ascending=False, ignore_index=True)
+            forms_df = forms_df.append({'name':'Total:', 'resultsCount':forms_df['resultsCount'].sum(), 'filesSize':forms_df['filesSize'].sum(),'form_id':f'{forms_df.shape[0]} forms'}, ignore_index=True)
             forms_df['filesSize'] = forms_df['filesSize'].apply(lambda x: self.human_friendly_filesize(int(x)))
             forms_df.set_index('name',inplace=True)
             print(forms_df)
+            
         if save2csv is not False:
             forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
             forms_df.set_index('name',inplace=True)
