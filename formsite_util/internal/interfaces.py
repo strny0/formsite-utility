@@ -26,22 +26,41 @@ from .api import _FormsiteAPI
 __version__ = '1.2.8.post2'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
+    """Shifts input date in the string format/datetime by timedelta in timezone offset.
+    The offset is additive, date + timezone_offset.
+
+    Args:
+        date (Union[str, dt]): String in formats: 'yyyy-mm-dd', 'yyyy-mm-dd HH:MM:SS' or 'yyyy-mm-ddTHH:MM:SSZ' or datetime.    
+        timezone_offset (td): A timedelta value representing addition to 'date'.
+
+    Raises:
+        ValueError: Raised if string format is not recognized.
+
+    Returns:
+        str: A datetime string in 'yyyy-mm-ddTHH:MM:SSZ' format, shifted by timezone_offset amount.
+    """    
     if isinstance(date, dt):
         date = date + timezone_offset
     else:
         try:
-            date = dt.strptime(str(date), "%Y-%m-%dT%H:%M:%SZ")
-            date = date + timezone_offset
-        except ValueError:
+            try:
+                date = dt.strptime(str(date), "%Y-%m-%dT%H:%M:%SZ")
+                date = date + timezone_offset
+            except ValueError as e:
+                pass
             try:
                 date = dt.strptime(str(date), "%Y-%m-%d")
                 date = date + timezone_offset
-            except ValueError:
-                try:
-                    date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
-                    date = date + timezone_offset
-                except ValueError:
-                    raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
+            except ValueError as e:
+                pass
+            try:
+                date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
+                date = date + timezone_offset
+            except ValueError as e:
+                pass
+        except Exception as e:
+            raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""", e)
+
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
 def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
@@ -201,7 +220,6 @@ class FormsiteCredentials:
 
 @dataclass
 class FormsiteInterface:
-
     """A base class for interacting with the formsite API.\n
     Documentation: https://pypi.org/project/formsite-util/\n
     `self.Data` pandas dataframe storing your results.\n
