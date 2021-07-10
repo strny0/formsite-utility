@@ -1,10 +1,11 @@
 """
-core.py 
+core.py
 
 `FormsiteInterface` `FormsiteParams` and `FormsiteCredentials` classes are defined here.
 Author: Jakub Strnad
 Documentation: https://github.com/strny0/formsite-utility
 """
+
 import csv
 import asyncio
 import json
@@ -13,17 +14,16 @@ from datetime import timedelta as td
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
-import sys
-from typing import Any, Optional, Set, Union, Tuple, Dict, List
+from typing import Any, Optional, Set, Union, Tuple, List
 import re
 import pandas as pd
 from pytz import UnknownTimeZoneError, timezone as pytztimezone
 from aiohttp import request
-from formsite_util.downloader import _FormsiteDownloader
-from formsite_util.processing import _FormsiteProcessing
-from formsite_util.api import _FormsiteAPI
+from .downloader import _FormsiteDownloader
+from .processing import _FormsiteProcessing
+from .api import _FormsiteAPI
 
-__version__ = '1.2.8.post1'
+__version__ = '1.2.8.post2'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     if isinstance(date, dt):
@@ -41,10 +41,7 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
                     date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
                     date = date + timezone_offset
                 except ValueError:
-                    raise Exception(
-                        'invalid date format input for afterdate/beforedate, '
-                        'please use a datetime object or string in ISO 8601, '
-                        'yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format')
+                    raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
 def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
@@ -120,6 +117,7 @@ class FormsiteParams:
     `resultslabels` and `resultsview` More info on Formsite website or FS API of your specific form.\n
     `sort` ( "asc" | "desc" ) sorts results by reference number in ascending or descending order.
     """
+    last: Optional[int] = None
     afterref: Optional[int] = None
     beforeref: Optional[int] = None
     afterdate: Optional[Union[str, dt]] = None
@@ -304,10 +302,11 @@ class FormsiteInterface:
         # extract regex if it exists,
         # unstack into dataframes and concat them all,
         # then iterate through it and keep only links that match regex filter
-        link_columns = pd.concat([col.astype(str).str.extractall(links_re).unstack() for _, col in self.Data.items()])
+        extracted_links_dataframes = [col.astype(str).str.extractall(links_re).unstack() for _, col in self.Data.items()]
+        all_links = pd.concat(extracted_links_dataframes)
         links_filter_pattern = re.compile(links_filter_re)
         self.Links = set()
-        for _, item in link_columns.iteritems():
+        for _, item in all_links.iteritems():
             for url_raw in item.to_list():
                 try:
                     if links_filter_pattern.search(url_raw) is not None:
@@ -362,7 +361,7 @@ class FormsiteInterface:
             forms_df['filesSize'] = forms_df['filesSize'].apply(lambda x: self.human_friendly_filesize(int(x)))
             forms_df.set_index('name',inplace=True)
             print(forms_df)
-            
+
         if save2csv is not False:
             forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
             forms_df.set_index('name',inplace=True)

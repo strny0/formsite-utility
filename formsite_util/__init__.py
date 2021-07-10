@@ -1,1 +1,1 @@
-from formsite_util.core import FormsiteCredentials, FormsiteInterface, FormsiteParams
+from .terminal_cli import FormsiteCredentials, FormsiteInterface, FormsiteParams
