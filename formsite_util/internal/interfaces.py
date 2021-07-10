@@ -46,51 +46,79 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
             try:
                 date = dt.strptime(str(date), "%Y-%m-%dT%H:%M:%SZ")
                 date = date + timezone_offset
-            except ValueError as e:
+            except:
                 pass
             try:
                 date = dt.strptime(str(date), "%Y-%m-%d")
                 date = date + timezone_offset
-            except ValueError as e:
+            except:
                 pass
             try:
                 date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
                 date = date + timezone_offset
-            except ValueError as e:
+            except:
                 pass
         except Exception as e:
-            raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""", e)
+            raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
 
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
+def _extract_timezone_from_str(timezone: str, timezone_re: str) -> td:
+    """Parses input timezone: str -> timedelta
+
+    Args:
+        timezone (str): string in format ['+0200', '02:00', +02:00', '16:48', '-05:00', '-0600']
+        timezone_re (str): regex encompassing above mentioned valid formats
+
+    Returns:
+        timedelta: timedelta offset
+    """
+    tz_offset = None
+    if re.search(timezone_re, timezone) is not None:
+        tz_str = timezone.replace(r'\'', '').replace(r'\"','')
+        if ':' in tz_str:
+            tz_tuple = tz_str.split(':', 1)
+        else:
+            t = (len(tz_str) - 2)
+            tz_tuple = (tz_str[:t], tz_str[-2:])
+
+        tz_offset = td(hours=int(tz_tuple[0]), seconds=int(tz_tuple[1])/60)
+    return tz_offset
+
 def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
-    """Returns timedelta offset of local datetime to target timezone and local datetime."""
+    """Calculates timezone offset relative to input TARGET timezone string and LOCAL timezone.
+
+    Args:
+        timezone (str): String in format Ex. 'America/Chicago' (tz_database_name) or offset like '0400', '+0400', '-7:00', '-14:00'
+
+    Raises:
+        UnknownTimeZoneError: If input is not a valid tz_databse name or offset.
+
+    Returns:
+        Tuple[timedelta, datetime]: tuple of offset_from_local time as a timedelta and local_time (datetime)
+    """    
     local_date = dt.now()
     utc_date = dt.utcnow()
     utc_offset = local_date - utc_date
-    if re.search(r'(\+|\-|)([01]?\d|2[0-3])([0-5]\d)', timezone) is not None:
-        inp = timezone.replace("'", "")
-        l_inp = [inp[:2], inp[2:]] if len(inp) == 4 else [inp[:3], inp[3:]]
-        offset_from_local = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60)
-    elif re.search(r'(\+|\-|)([01]?\d|2[0-3]):([0-5]\d)', timezone) is not None:
-        inp = timezone.replace("'", "")
-        l_inp = [inp[:2], inp[3:]] if len(inp) == 5 else [inp[:3], inp[4:]]
-        offset_from_local = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60)
-    elif re.search(r'.+/.+', timezone) is not None:
-        try:
-            inp = pytztimezone(timezone).localize(
-                local_date).strftime("%z")
-            l_inp = [inp[:2], inp[2:]] if len(inp) == 4 else [inp[:3], inp[3:]]
-            inp_td = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60).total_seconds()
-            offset_from_local = td(
-                seconds=(inp_td - utc_offset.total_seconds()))
-        except UnknownTimeZoneError:
-            raise Exception(
-                f"UnknownTimeZoneError, '{timezone}' is not a valid tz database name.")
-    elif timezone == 'local':
+    if timezone == 'local':
         offset_from_local = td(seconds=0)
     else:
-        raise Exception(f"'{timezone}' is invalid tz databse name or offset.")
+        tz_input_reges = r'(\+|\-|)([0-1]\d[0-5]\d|[0-1]\d\:[0-5]\d|\d\:[0-5]\d)'
+        # (\+|\-|)         : '+' or '-' or ''
+        # [0-1]\d[0-5]\d   : '0000'
+        # [0-1]\d\:[0-5]\d : '00:00'
+        # \d\:[0-5]\d      : '0:00'
+        offset_from_local = _extract_timezone_from_str(timezone, tz_input_reges)
+        if offset_from_local is None:
+            if re.search(r'\w+/\w+', timezone) is not None:
+                inp = pytztimezone(timezone).localize(local_date).strftime("%z")
+                t = (len(inp) - 2)
+                l_inp = (inp[:t], inp[-2:])
+                inp_td = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60).total_seconds()
+                offset_from_local = td(seconds=(inp_td - utc_offset.total_seconds()))
+            else:
+                raise UnknownTimeZoneError(timezone)
+    
     return offset_from_local, local_date
 
 def _sanitize_argument(argument: Any, chars2remove: List[str]) -> str:
@@ -158,8 +186,7 @@ class FormsiteParams:
 
     def __post_init__(self):
         """Calls `_calculate_tz_offset` internal function."""
-        self.timezone_offset, self.local_datetime = _calculate_tz_offset(
-            self.timezone)
+        self.timezone_offset, self.local_datetime = _calculate_tz_offset(self.timezone)
 
     def get_params(self, single_page_limit: int = 500) -> dict:
         """Returns a dict that gets parsed as parameters by aiohttp when making a request."""
