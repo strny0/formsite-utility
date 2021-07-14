@@ -8,7 +8,10 @@ import csv # used in an eval
 import sys
 from time import perf_counter
 import argparse
-from .internal.interfaces import FormsiteParams, FormsiteCredentials, FormsiteInterface, __version__
+try:
+    from .internal.interfaces import FormsiteParams, FormsiteCredentials, FormsiteInterface, __version__
+except ImportError:
+    from internal.interfaces import FormsiteParams, FormsiteCredentials, FormsiteInterface, __version__
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
@@ -89,6 +92,7 @@ def gather_args() -> argparse.Namespace:
                           "\n'Europe/Paris'"
                           "\n'America/New_York'"
                           "\n'Asia/Bangkok'")
+    g_params.add_argument('--delay', type=int, default=5, help='Delay in seconds between each API call.')
     g_output.add_argument('-o', '--output_file', nargs='?', default=False, const='default',
                           help="Specify output file name and location."
                           "\nDefaults to export_yyyymmdd_formID.csv in the folder of the script."
@@ -159,11 +163,6 @@ def gather_args() -> argparse.Namespace:
                            help="You may chose what to sort -L commands by in descending order. Defaults to name.")
     g_debug.add_argument('--disable_progressbars', action="store_true", default=False,
                          help="If you use this flag, program will not display progressbars to console.")
-    g_debug.add_argument('--generate_results_jsons', action="store_true", default=False,
-                         help="If you use this flag, program will output raw results in json format from API requests."
-                         "\nUseful for debugging purposes.")
-    g_debug.add_argument('--generate_items_jsons', action="store_true", default=False,
-                         help="If you use this flag, program will not store headers for later reuse.")
     g_debug.add_argument('-v', '--verbose', action="store_true", default=False,
                          help="If you use this flag, program will log progress in greater detail.")
     return parser.parse_known_args()[0]
@@ -206,8 +205,7 @@ def main():
 
     if arguments.output_file is not False:
         if interface.Data is None:
-            interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,
-                                   save_items_json=arguments.generate_items_jsons)
+            interface.FetchResults()
         line_term = {"LF":"\n", "CR":"\r", "CRLF":"\r\n"}
         if arguments.output_file == 'default':
             default_filename = f'./export_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.csv'
@@ -219,13 +217,12 @@ def main():
                                encoding=arguments.encoding,
                                separator=arguments.separator,
                                line_terminator=line_term.get(arguments.line_terminator),
-                               quoting=eval(f"csv.QUOTE_{arguments.quoting}"))
+                               quoting=getattr(csv, f'QUOTE_{arguments.quoting}'))
         print("export complete")
 
     if arguments.extract_links is not False:
         if interface.Data is None:
-            interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,
-                                   save_items_json=arguments.generate_items_jsons)
+            interface.FetchResults()
         if arguments.extract_links == 'default':
             default_filename = f'./links_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.txt'
             interface.WriteLinks(
@@ -237,8 +234,7 @@ def main():
 
     if arguments.download_links is not False:
         if interface.Data is None:
-            interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,
-                                   save_items_json=arguments.generate_items_jsons)
+            interface.FetchResults()
         if arguments.download_links == 'default':
             default_folder = f'./download_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}'
         else:
@@ -257,8 +253,7 @@ def main():
 
     if arguments.store_latest_ref is not False:
         if interface.Data is None:
-            interface.FetchResults(save_results_jsons=arguments.generate_results_jsons,
-                                   save_items_json=arguments.generate_items_jsons)
+            interface.FetchResults()
         if arguments.store_latest_ref == 'default':
             default_filename = './latest_ref.txt'
         else:
