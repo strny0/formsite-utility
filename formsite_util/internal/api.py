@@ -109,7 +109,7 @@ class _FormsiteAPI:
             content = response.json()
             if response.status_code != 200:
                 self._update_pbar_desc(desc=f"Error: [{response.status_code}]")
-                if response.status == 429:
+                if response.status_code == 429:
                     self._update_pbar_desc(desc="Reached rate limit, waiting 60 seconds")
                     time.sleep(60)
                     self._update_pbar_desc(desc="Fetching results")
@@ -122,7 +122,7 @@ class _FormsiteAPI:
                 self.check_pages = False
                 try:
                     self.pbar.total = self.total_pages
-                except AttributeError:
+                except AttributeError as ex:
                     pass
         self._update_pbar_progress()
         return content

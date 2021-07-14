@@ -1,13 +1,12 @@
 """Module doscstring to make pylint STFU."""
 
 import setuptools
-try:
-    from .formsite_util.internal.interfaces import __version__
-except ImportError:
-    from formsite_util.internal.interfaces import __version__
+from formsite_util.internal.interfaces import __version__
 
 with open('README.md', 'r', encoding='utf-8') as reader:
     long_description = reader.read()
+
+packages = setuptools.find_packages()
 
 setuptools.setup(
     name='formsite-util',
@@ -17,7 +16,7 @@ setuptools.setup(
     description='A simple Formsite API python script to get results and download files from your forms.',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    install_requires=['asyncio', 'aiohttp','colorama', 'dataclasses', 'typing',
+    install_requires=['asyncio', 'aiohttp','requests','colorama', 'dataclasses', 'typing',
                       'pandas', 'python_dateutil', 'pytz', 'regex', 'tqdm', 'prompt_toolkit'],
     keywords=['python', 'formsite', 'fs', 'api', 'automation', 'download', 'form', 'python3',
               'utility', 'util', 'system', 'rest', 'integration', 'links', 'url', 'urls',
@@ -40,7 +39,7 @@ setuptools.setup(
         'Operating System :: OS Independent',
         'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)'
     ],
-    packages=setuptools.find_packages(),
+    packages=packages,
     python_requires='>=3.6',
     entry_points={
         'console_scripts': [
