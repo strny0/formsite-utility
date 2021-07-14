@@ -4,18 +4,17 @@ downloader.py
 this module contains the functionality for downloading downloading
 many urls concurrently with a worker queue+semaphore asyncio approach
 """
+from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from time import perf_counter
-import shutil
 import asyncio
+import shutil
+from time import perf_counter
 from typing import Iterable, Set, Tuple
 from dataclasses import dataclass
-from tqdm.asyncio import tqdm
+from tqdm import tqdm
 from aiohttp import ClientSession, ClientTimeout, TCPConnector, ClientResponseError, InvalidURL
-from aiofiles import open as aiopen
-
 @dataclass
 class _FormsiteDownloader:
 
@@ -204,7 +203,7 @@ class DownloadWorker:
                     break
                 url, attempt = await self.queue.get()
                 await self.semaphore.acquire()
-                if self.internal_state.last_progress_display_update - perf_counter() > 5:
+                if abs(self.internal_state.last_progress_display_update - perf_counter()) > 5: # seconds
                     self._update_pbar(desc="Downloading files…")
                 self.internal_state.start_iteration()
                 try:
@@ -233,7 +232,7 @@ class DownloadWorker:
                         unit_scale=True,
                         unit_divisor=1024,
                         ncols=80) if self.display_progress else None
-            async with aiopen(target+in_progress_ext, "wb") as writer:
+            with open(target+in_progress_ext, "wb") as writer:
                 async for chunk in response.content.iter_chunked(chunk_size):
                     await writer.write(chunk)
                     if pbar is not None:
@@ -313,15 +312,14 @@ class DownloadWorker:
             filename = self._check_if_file_exists(filename, appended_number=appended_number+1)
         return filename
 
-    @staticmethod
-    def _regex_substitution(filename: str, filename_regex):
-        """Replaces characters that dont match regex with nothing."""
+    def _regex_substitution(self, filename: str, filename_regex: re.Pattern) -> str:
+        """Removes characters that match regex."""
         try:
-            temp = filename.rsplit('.', 1)
+            old_filename_tuple = filename.rsplit('.', 1)
             try:
-                filename = f"{filename_regex.sub('', temp[0])}.{temp[1]}"
-            except Exception as ex:
-                filename = f"{filename_regex.sub('', temp[0])}"
-        except Exception as ex:
-            filename = f"{filename_regex.sub('', filename)}"
-        return filename
+                new_filename = f"{filename_regex.sub('', old_filename_tuple[0])}.{old_filename_tuple[1]}"
+            except:
+                new_filename = f"{filename_regex.sub('', old_filename_tuple[0])}"
+        except:
+            new_filename = f"{filename_regex.sub('', filename)}"
+        return new_filename
