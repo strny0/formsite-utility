@@ -1,5 +1,10 @@
+"""Module doscstring to make pylint STFU."""
+
 import setuptools
-from formsite_util.core import __version__
+try:
+    from .formsite_util.internal.interfaces import __version__
+except ImportError:
+    from formsite_util.internal.interfaces import __version__
 
 with open('README.md', 'r', encoding='utf-8') as reader:
     long_description = reader.read()
@@ -9,13 +14,14 @@ setuptools.setup(
     version=__version__,
     author='Jakub Strnad',
     author_email='jakub.strnad@protonmail.com',
-    description='A simple Formsite API python script, used to get results or to download files from your formsite forms.',
+    description='A simple Formsite API python script to get results and download files from your forms.',
     long_description=long_description,
     long_description_content_type='text/markdown',
-    install_requires=['asyncio', 'aiofiles', 'aiohttp','colorama', 'dataclasses', 'typing',
-                      'pandas', 'python_dateutil', 'pytz', 'regex', 'tqdm'],
+    install_requires=['asyncio', 'aiohttp','colorama', 'dataclasses', 'typing',
+                      'pandas', 'python_dateutil', 'pytz', 'regex', 'tqdm', 'prompt_toolkit'],
     keywords=['python', 'formsite', 'fs', 'api', 'automation', 'download', 'form', 'python3',
-              'utility', 'util', 'system', 'rest', 'integration', 'links', 'url', 'urls'],
+              'utility', 'util', 'system', 'rest', 'integration', 'links', 'url', 'urls',
+              'cli', 'gui', 'py'],
     url='https://github.com/strny0/formsite-utility/',
     project_urls={
         'Bug Tracker': 'https://github.com/strny0/formsite-utility/issues',
@@ -26,6 +32,7 @@ setuptools.setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
         'Development Status :: 5 - Production/Stable',
         'Topic :: Utilities',
         'Typing :: Typed',
@@ -37,7 +44,7 @@ setuptools.setup(
     python_requires='>=3.6',
     entry_points={
         'console_scripts': [
-            'getform=formsite_util.cli:main'
+            'getform=formsite_util.terminal_cli:main',
         ]
     }
 )

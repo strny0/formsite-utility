@@ -24,7 +24,7 @@ from .downloader import _FormsiteDownloader
 from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 
-__version__ = '1.2.8.post2'
+__version__ = '1.3.0'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     """Shifts input date in the string format/datetime by timedelta in timezone offset.
