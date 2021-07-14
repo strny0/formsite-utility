@@ -5,7 +5,7 @@ core.py
 Author: Jakub Strnad
 Documentation: https://github.com/strny0/formsite-utility
 """
-
+from __future__ import annotations
 import csv
 import asyncio
 import json
@@ -14,8 +14,9 @@ from datetime import timedelta as td
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Optional, Set, Union, Tuple, List
+from typing import Any, Dict, Optional, Set, Union, Tuple, List
 import re
+import os
 import pandas as pd
 from pytz import UnknownTimeZoneError, timezone as pytztimezone
 from aiohttp import request
@@ -30,7 +31,7 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     The offset is additive, date + timezone_offset.
 
     Args:
-        date (Union[str, dt]): String in formats: 'yyyy-mm-dd', 'yyyy-mm-dd HH:MM:SS' or 'yyyy-mm-ddTHH:MM:SSZ' or datetime.    
+        date (Union[str, dt]): String in formats: 'yyyy-mm-dd', 'yyyy-mm-dd HH:MM:SS' or 'yyyy-mm-ddTHH:MM:SSZ' or datetime. 
         timezone_offset (td): A timedelta value representing addition to 'date'.
 
     Raises:
@@ -57,8 +58,8 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
                 date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
                 date = date + timezone_offset
             except:
-                pass
-        except Exception as e:
+                raise
+        except:
             raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
 
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
@@ -118,37 +119,62 @@ def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
                 offset_from_local = td(seconds=(inp_td - utc_offset.total_seconds()))
             else:
                 raise UnknownTimeZoneError(timezone)
-    
+
     return offset_from_local, local_date
 
-def _sanitize_argument(argument: Any, chars2remove: List[str]) -> str:
-    """Sanitizes input from `formsite_util.cli`."""
-    for _k, _v in chars2remove:
-        argument = str(argument).replace(_k, _v)
+def _sanitize_argument(argument: str, chars2remove: Dict[str,str]) -> str:
+    """Performs a find and replace on 'argument' based on mapping in chars2remove.
+
+    Args:
+        argument (str): text to perform find and replace on
+        chars2remove (List[str]): mapping of {find:replace}
+
+    Returns:
+        str: sanitized argument
+    """
+    for key, value in chars2remove.items():
+        argument = str(argument).replace(key, value)
     return argument
 
-def _confirm_arg_format(argument: str, argument_name: str, flag: str, example: str) -> str:
-    """Validates input from `formsite_util.cli`."""
-    quotes_map = [('\'', ''), ('\"', '')]
-    if not isinstance(argument, str):
-        raise Exception(f'invalid format for argument {argument}, {argument_name}, '
+def _confirm_arg_format(arg_value: str, arg_name: str, flag: str, example: str) -> str:
+    """A boiler plate function to display a helpful error message.
+
+    Args:
+        arg_value (str): current value of the argument variable
+        arg_name (str): exact name of the argument variable
+        flag (str): flag used to invoke the argument in terminal
+        example (str): correct example value
+
+    Raises:
+        ValueError: Raised upon entering the incorrect argumant/format.
+
+    Returns:
+        str: the sanitized (quote-less) argument back
+    """
+    quotes_map = {'\'':'', '\"':''}
+    if not isinstance(arg_value, str):
+        raise ValueError(f'invalid format for argument {arg_value}, {arg_name}, '
                         f'correct example: {flag} {example}')
-    argument = _sanitize_argument(argument, quotes_map)
-    return argument
+    arg_value = _sanitize_argument(arg_value, quotes_map)
+    return arg_value
 
-def _validate_path(path: str, is_folder=False) -> str:
-    """Parses input path to posix format. Creates parent directories if they dont exist."""
-    try:
-        output_file = Path(path).resolve()
-        if is_folder:
-            if not output_file.exists():
-                output_file.mkdir(parents=True)
-        else:
-            if not output_file.parent.exists():
-                output_file.parent.mkdir(parents=True)
-        return output_file.as_posix()
-    except Exception as exception:
-        raise exception
+def _validate_path(path: str) -> str:
+    """Converts input path into POSIX format. Creates parent directories if necessary.
+
+    Args:
+        path (str): path to a file or a folder in any format
+
+    Returns:
+        str: path to a file or a folder in posix format
+    """
+
+    output_file = Path(path).resolve().absolute()
+    if output_file.is_dir():
+        os.makedirs(output_file.as_posix(), exist_ok=True)
+    else:
+        os.makedirs(output_file.parent.as_posix(), exist_ok=True)
+
+    return output_file.as_posix()
 
 @dataclass
 class FormsiteParams:
@@ -169,10 +195,10 @@ class FormsiteParams:
     beforeref: Optional[int] = None
     afterdate: Optional[Union[str, dt]] = None
     beforedate: Optional[Union[str, dt]] = None
-    timezone: str = 'local'
-    resultslabels: int = 10
-    resultsview: int = 11
-    sort: str = "desc"
+    timezone: Optional[str] = 'local'
+    resultslabels: Optional[int] = None
+    resultsview: Optional[int] = 11
+    sort: Optional[str] = "desc"
     col_id_sort: Optional[int] = None
     search_equals: Optional[str] = None
     col_id_equals: Optional[int] = None
@@ -186,10 +212,18 @@ class FormsiteParams:
 
     def __post_init__(self):
         """Calls `_calculate_tz_offset` internal function."""
+        self.timezone = 'local' if self.timezone is None else self.timezone
         self.timezone_offset, self.local_datetime = _calculate_tz_offset(self.timezone)
 
-    def get_params(self, single_page_limit: int = 500) -> dict:
-        """Returns a dict that gets parsed as parameters by aiohttp when making a request."""
+    def get_params_as_dict(self, single_page_limit: int = 500) -> dict:
+        """Generates a parameters dictionary that is later passed to params= kw argument when making API calls.
+
+        Args:
+            single_page_limit (int, optional): Results per page limit, 500 is maximum amount. Defaults to 500.
+
+        Returns:
+            dict: params dict
+        """
         results_params: dict[str, Union[str, int]] = dict()
         results_params['page'] = 1
         results_params['limit'] = single_page_limit
@@ -225,8 +259,18 @@ class FormsiteParams:
 
 @dataclass
 class FormsiteCredentials:
+    """Class representing formsite login information.
 
-    """Class which represents your user credentials for accessing the formsite API."""
+    Args:
+        token (str): API access token
+
+        server (str): formsite server, can be found in your formsite url at the beginning, https://fs_.(...).com
+
+        directory (str): can also be found in your formsite URL, when accessing a specific form
+
+    Returns:
+        FormsiteCredentials instance
+    """
     token: str
     server: str
     directory: str
@@ -235,7 +279,7 @@ class FormsiteCredentials:
         """Confirms validity of input."""
         self.confirm_validity()
 
-    def get_auth(self) -> dict:
+    def get_auth_header(self) -> dict:
         """Returns a dictionary sent as a header in the API request for authorization purposes."""
         return {"Authorization": f"bearer {self.token}", "Accept": "application/json"}
 
@@ -272,6 +316,7 @@ class FormsiteInterface:
     Data: Optional[pd.DataFrame] = None
     Links: Optional[set] = None
     display_progress: bool = True
+    api_call_delay: int = 5
 
     def __post_init__(self):
         """Initializes private variables.\n
@@ -281,8 +326,8 @@ class FormsiteInterface:
         """
         self.url_base: str = f"https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}"
         self.url_files = f"https://{self.auth.server}.formsite.com/{self.auth.directory}/files/"
-        self.auth_dict = self.auth.get_auth()
-        self.params_dict = self.params.get_params()
+        self.auth_dict = self.auth.get_auth_header()
+        self.params_dict = self.params.get_params_as_dict()
         self.items_dict = self.params.get_items()
 
     def __enter__(self):
@@ -293,48 +338,33 @@ class FormsiteInterface:
         """Allows use of context managers."""
         del self
 
-    def _perform_api_fetch(self,
-                           save_results_jsons: bool,
-                           save_items_json: bool) -> Tuple[str, Optional[List[str]]]:
+    def _perform_api_fetch(self) -> Tuple[dict, List[dict]]:
         """Entrypoint for performing API calls (asynchronously)."""
-        api_handler = _FormsiteAPI(self,
-                                   save_results_jsons=save_results_jsons,
-                                   save_items_json=save_items_json,
-                                   display_progress=self.display_progress)
-        api_coroutine = api_handler.Start()
-        return asyncio.get_event_loop().run_until_complete(api_coroutine)
+        api_handler = _FormsiteAPI(self, display_progress=self.display_progress, delay=self.api_call_delay)
+        items, results = api_handler.Start()
+        return items, results
 
-    def _assemble_dataframe(self, items: str, results: List[pd.DataFrame]) -> pd.DataFrame:
+    def _assemble_dataframe(self, items: dict, results: List[dict]) -> pd.DataFrame:
         """Returns a pandas dataframe from received API data."""
         if self.params.sort == 'desc':
             sort = False
         else:
             sort = True
-        processing_handler = _FormsiteProcessing(items,
-                                                 results,
-                                                 self,
-                                                 sort_asc=sort,
-                                                 display_progress=self.display_progress)
+        processing_handler = _FormsiteProcessing(items, results, self, sort_asc=sort, display_progress=self.display_progress)
         return processing_handler.Process()
 
-    def FetchResults(self,
-                     save_results_jsons: bool = False,
-                     save_items_json: bool = False) -> None:
+    def FetchResults(self) -> None:
         """Fetches results from formsite API according to specified parameters.\n
         Updates the `self.Data` variable which stores the dataframe.
         """
         assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
-        items, results = self._perform_api_fetch(save_results_jsons=save_results_jsons,
-                                                 save_items_json=save_items_json)
+        items, results = self._perform_api_fetch()
         self.Data = self._assemble_dataframe(items, results)
 
-    def ReturnResults(self,
-                      save_results_jsons: bool = False,
-                      save_items_json: bool = False) -> pd.DataFrame:
+    def ReturnResults(self) -> pd.DataFrame:
         """Returns pandas dataframe of results."""
         if self.Data is None:
-            self.FetchResults(save_results_jsons=save_results_jsons,
-                              save_items_json=save_items_json)
+            self.FetchResults()
         return self.Data
 
     def ExtractLinks(self, links_filter_re: str = r'.+') -> None:
@@ -449,7 +479,7 @@ class FormsiteInterface:
             self.ExtractLinks(links_filter_re=links_regex)
         assert len(self.Links) > 0, f"There are no files to be downloaded for form {self.form_id}"
 
-        download_folder = _validate_path(download_folder, is_folder=True)
+        download_folder = _validate_path(download_folder)
         download_handler = _FormsiteDownloader(download_folder,
                                                self.Links,
                                                max_concurrent_downloads,
