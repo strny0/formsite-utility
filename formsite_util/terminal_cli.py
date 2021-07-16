@@ -8,12 +8,12 @@ import csv # used in an eval
 import sys
 from time import perf_counter
 import argparse
-from formsite_util import FormsiteParams, FormsiteInterface, FormsiteCredentials
-from formsite_util.internal.interfaces import __version__
-# try:
-#     from .internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
-# except ImportError:
-#     from internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
+# from formsite_util import FormsiteParams, FormsiteInterface, FormsiteCredentials
+# from formsite_util.internal.interfaces import __version__
+try:
+    from .internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
+except ImportError:
+    from internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""

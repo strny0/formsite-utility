@@ -23,8 +23,8 @@ from aiohttp import request
 from .downloader import _FormsiteDownloader
 from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
-
-__version__ = '1.3.3'
+from tqdm import tqdm
+__version__ = '1.3.7'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     """Shifts input date in the string format/datetime by timedelta in timezone offset.
@@ -367,29 +367,51 @@ class FormsiteInterface:
             self.FetchResults()
         return self.Data
 
+    def _xtract(self, x: Any, pattern: re.Pattern, links_set: set = set(), links_filter_pattern: re.Pattern = None, pbar: tqdm = None):
+        """Matches all formsite files links and appends them to links_set
+
+        Args:
+            x (Any): any element from self.Data
+            pattern (re.Pattern): formsite files link pattern
+            links_set (set, optional): output set of all links. Defaults to set().
+            links_filter_pattern (re.Pattern, optional): regex to match links. Defaults to None.
+        """
+        _ = pbar.update(1) if pbar is not None else None
+        try:
+            for url_raw in pattern.findall(x):
+                if '|' in url_raw:
+                    for part in url_raw.split(' | '):
+                        if links_filter_pattern.search(url_raw) is not None:
+                            links_set.add(part)
+                else:
+                    if links_filter_pattern.search(url_raw) is not None:
+                        links_set.add(url_raw)
+        except Exception as ex:
+            #print(ex)
+            pass
+
     def ExtractLinks(self, links_filter_re: str = r'.+') -> None:
         """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
         if self.Data is None:
             self.FetchResults()
         links_re = fr'(https\:\/\/{self.auth.server}\.formsite\.com\/{self.auth.directory}\/files\/.*)'
-        # iter through self.Data columns,
-        # for each column cast to string,
-        # extract regex if it exists,
-        # unstack into dataframes and concat them all,
-        # then iterate through it and keep only links that match regex filter
-        extracted_links_dataframes = [col.astype(str).str.extractall(links_re).unstack() for _, col in self.Data.items()]
-        all_links = pd.concat(extracted_links_dataframes)
-        links_filter_pattern = re.compile(links_filter_re)
-        self.Links = set()
-        for _, item in all_links.iteritems():
-            for url_raw in item.to_list():
-                try:
-                    if links_filter_pattern.search(url_raw) is not None:
-                        _ = [self.Links.add(url) for url in url_raw.split(' | ') if url != '']
-                except TypeError:
-                    pass
-                except AttributeError:
-                    pass
+        url_pattern = re.compile(links_re)
+        filter_pattern = re.compile(links_filter_re)
+        self.Links =set()
+        if self.display_progress:
+            pbar = tqdm(desc='Extracting download links', leave=False, unit=' cells')
+        else:
+            pbar = None
+            
+        _ = self.Data.applymap(lambda x: self._xtract(x, 
+                                                      pattern=url_pattern, 
+                                                      links_set=self.Links, 
+                                                      links_filter_pattern=filter_pattern,
+                                                      pbar=pbar))
+        try:
+            pbar.close()
+        except AttributeError:
+            pass
 
     def human_friendly_filesize(self, number: int) -> str:
         """Converts a number (filesize in bytes) to more readable filesize with units."""
@@ -397,7 +419,7 @@ class FormsiteInterface:
         while number >= 1024:
             number = number / 1024
             reductions += 1
-        unit = {0: '', 1:'K', 2:'M', 3:'G', 4:'T'}
+        unit = {0: '', 1:'K', 2:'M', 3:'G', 4:'T', 5:'P', 6:'E'}
         return f"{number:0.2f} {unit.get(reductions, None)}B"
 
     async def _list_all_forms(self) -> pd.DataFrame:
@@ -420,9 +442,17 @@ class FormsiteInterface:
     def ListAllForms(self,
                      sort_by: str = 'name',
                      display: bool = False,
-                     save2csv: Union[str, bool] = False) -> None:
+                     save2csv: Union[str, bool] = False) -> pd.DataFrame:
         """Prints name, id, results count, filesize and status of all forms into console or csv.
         You can sort in descending order by `name` `form_id` `resultsCount` `filesSize`.
+
+        Args:
+            sort_by (str, optional): One of {'name', 'form_id', 'resultsCount', 'filesSize'}. Defaults to 'name'.
+            display (bool, optional): Print to stdout. Defaults to False.
+            save2csv (Union[str, bool], optional): Path to output csv file. Defaults to False.
+        
+        Returns:
+            pd.DataFrame: Dataframe with all relevant forms data.    
         """
         forms_df = asyncio.get_event_loop().run_until_complete(self._list_all_forms())
         if display:
@@ -442,6 +472,8 @@ class FormsiteInterface:
             forms_df.set_index('name',inplace=True)
             output_file = _validate_path(str(save2csv))
             forms_df.to_csv(output_file, encoding='utf-8')
+            
+        return forms_df
 
     def ReturnLinks(self, links_regex: str = r'.+') -> Set[str]:
         """Returns a set of urls of files saved on formsite servers."""
@@ -453,7 +485,13 @@ class FormsiteInterface:
                    destination_path: str,
                    links_regex: str = r'.+',
                    sort_descending: bool = True) -> None:
-        """Writes links extracted with `self.ExtractLinks()` to a .txt file."""
+        """Writes links extracted with `self.ExtractLinks()` to a .txt file.
+
+        Args:
+            destination_path (str): path to output file
+            links_regex (str, optional): Include only links that match target regex. Defaults to r'.+'.
+            sort_descending (bool, optional): Defaults to True.
+        """
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_re=links_regex)
         output_file = _validate_path(destination_path)
@@ -469,11 +507,25 @@ class FormsiteInterface:
                       filename_regex: str = r'',
                       overwrite_existing: bool = True,
                       report_downloads: bool = False,
-                      timeout: int = 80,
+                      timeout: float = 80,
                       retries: int = 1,
                       strip_prefix: bool = False) -> None:
-        """Downloads files saved on formsite servers, that were submitted to the specified form.\n
+        """Downloads files saved on formsite servers, that were submitted to the specified form.
         Please customize `max_concurrent_downloads` to your specific use case.
+
+        Args:
+            download_folder (str): Path to target download folder
+            max_concurrent_downloads (int, optional): Defaults to 10.
+            links_regex (str, optional): Example: r'.+\.jpg$' would get all files that end with .jpg. Defaults to r'.+'.
+            filename_regex (str, optional): Removes characters that don't match regex from remote-filename. Defaults to r''.
+            overwrite_existing (bool, optional): Whether or not to overwrite existing files. Defaults to True.
+            report_downloads (bool, optional): Generates a report .txt file. Defaults to False.
+            timeout (float, optional): In seconds, specify how long to wait for connection/download. Defaults to 80.
+            retries (int, optional): In case of failed download or a timeout error, how many times to retry download. Defaults to 1.
+            strip_prefix (bool, optional): If True, strips f-xxx-xxx prefix. Defaults to False.
+        
+        Raises:
+            AssertationError: if len(self.Links) < 1, ie. there is nothing to download.
         """
         if self.Links is None:
             self.ExtractLinks(links_filter_re=links_regex)
@@ -512,8 +564,16 @@ class FormsiteInterface:
                      separator: str = ",",
                      date_format: str = "%Y-%m-%d %H:%M:%S",
                      quoting: int = csv.QUOTE_MINIMAL) -> None:
-        """Writes `self.Data` to a file based on provided extension.\n
+        """Writes `self.Data` to a file based on provided extension.
         Supported output formats are (`.csv`|`.xlsx`|`.pkl`|`.pickle`|`.json`|`.parquet`|`.md`|`.txt`)
+
+        Args:
+            destination_path (str): path to output file
+            encoding (str, optional): Defaults to "utf-8".
+            line_terminator (str, optional): Defaults to '\n'.
+            separator (str, optional): Defaults to ",".
+            date_format (str, optional): Defaults to "%Y-%m-%d %H:%M:%S".
+            quoting (int, optional): Pass values from csv.QUOTE_ enum. Defaults to csv.QUOTE_MINIMAL.
         """
         if self.Data is None:
             self.FetchResults()
@@ -555,4 +615,4 @@ class FormsiteInterface:
         output_file = _validate_path(destination_path)
         latest_ref = max(self.Data['Reference #'])
         with open(output_file, 'w') as writer:
-            writer.write(latest_ref)
+            writer.write(str(latest_ref))
