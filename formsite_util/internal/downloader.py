@@ -48,7 +48,12 @@ class _FormsiteDownloader:
 
     async def Start(self) -> None:
         """Starts download of links."""
-        pbar = tqdm(total=len(self.links), desc="Downloading files", unit='f', leave=False) if self.display_progress else None
+        pbar = tqdm(total=len(self.links),
+                    desc="Downloading files",
+                    unit='f',
+                    leave=False,
+                    dynamic_ncols=True,
+                    ncols=80) if self.display_progress else None
         os.makedirs(self.download_folder, exist_ok=True)
         async with ClientSession(connector=TCPConnector(limit=0)) as session:
             self.internal_state.update_pbar_callback = pbar.update if pbar is not None else None
@@ -205,7 +210,7 @@ class DownloadWorker:
                 url, attempt = await self.queue.get()
                 await self.semaphore.acquire()
                 if abs(self.internal_state.last_progress_display_update - perf_counter()) > 5: # seconds
-                    self._update_pbar(desc="Downloading files…")
+                    self._update_pbar(desc="Downloading files")
                 self.internal_state.start_iteration()
                 try:
                     response = await self._download(url)
@@ -233,9 +238,9 @@ class DownloadWorker:
                         unit_scale=True,
                         unit_divisor=1024,
                         ncols=80) if self.display_progress else None
-            with open(target+in_progress_ext, "wb") as writer:
+            with open(target+in_progress_ext, "wb") as f:
                 async for chunk in response.content.iter_chunked(chunk_size):
-                    writer.write(chunk)
+                    f.write(chunk)
                     if pbar is not None:
                         pbar.update(len(chunk))
         try:
