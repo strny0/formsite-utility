@@ -5,7 +5,7 @@ This module handles processing of results from API jsons. Returns a dataframe.
 """
 from __future__ import annotations
 from datetime import datetime as dt
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -25,7 +25,6 @@ class _FormsiteProcessing:
         self.timezone_offset = self.interface.params.timezone_offset
         self.column_map = self._generate_columns()
         self.metadata_map = self._generate_metadata()
-        self.pbar = tqdm(total=4, desc='Processing results', leave=False) if self.display_progress else None
 
     def _generate_columns(self) -> Dict[int,str]:
         """Creates a dict that maps column id to column label from items_json
@@ -112,7 +111,8 @@ class _FormsiteProcessing:
         """
         items = self._process_items_row(in_json['items'])
         metadata = self._process_metadata_row(in_json)
-        return pd.concat((metadata, items))
+        concated = pd.concat((metadata, items), axis=0)
+        return concated
     
     def _reorder_columns(self, df: pd.DataFrame):
         """Orders existing columns into a standard export format.
@@ -124,41 +124,43 @@ class _FormsiteProcessing:
         Returns:
             pd.DataFrame: Ordered DataFrame
         """
-        # order
+        # order:
+        # Reference #, Status
+        # items
         # Date,Start Time,Finish Time,Duration (s),User,Browser,Device,Referrer
         left_side = []
         right_side = []
-        if 'Reference #' in df.columns:
-            left_side.append('Reference #')
-        if 'Status' in df.columns:
-            left_side.append('Status')
-        middle = [col if (col in df.columns) and (col not in self.metadata_map.values()) else None for col in list(self.column_map.values())]
+        if 'id' in df.columns:
+            left_side.append('id')
+        if 'result_status' in df.columns:
+            left_side.append('result_status')
+        middle = [col if (col in df.columns) and (col not in self.metadata_map.keys()) else None for col in list(self.column_map.keys())]
         while None in middle:
             middle.remove(None)
-        if 'Payment Status' in df.columns:
-            right_side.append('Payment Status')
-        if 'Payment Amount Paid' in df.columns:
-            right_side.append('Payment Amount Paid')
-        if 'Login Username' in df.columns:
-            right_side.append('Login Username')
-        if 'Login Email' in df.columns:
-            right_side.append('Login Email')
-        if 'Date' in df.columns:
-            right_side.append('Date')
-        if 'Start Time' in df.columns:
-            right_side.append('Start Time')
-        if 'Finish Time' in df.columns:
-            right_side.append('Finish Time')
+        if 'payment_status' in df.columns:
+            right_side.append('payment_status')
+        if 'payment_amount' in df.columns:
+            right_side.append('payment_amount')
+        if 'login_username' in df.columns:
+            right_side.append('login_username')
+        if 'login_email' in df.columns:
+            right_side.append('login_email')
+        if 'date_update' in df.columns:
+            right_side.append('date_update')
+        if 'date_start' in df.columns:
+            right_side.append('date_start')
+        if 'date_finish' in df.columns:
+            right_side.append('date_finish')
         if 'Duration (s)' in df.columns:
             right_side.append('Duration (s)')
-        if 'User' in df.columns:
-            right_side.append('User')
-        if 'Browser' in df.columns:
-            right_side.append('Browser')
-        if 'Device' in df.columns:
-            right_side.append('Device')
-        if 'Referrer' in df.columns:
-            right_side.append('Referrer')
+        if 'user_ip' in df.columns:
+            right_side.append('user_ip')
+        if 'user_browser' in df.columns:
+            right_side.append('user_browser')
+        if 'user_device' in df.columns:
+            right_side.append('user_device')
+        if 'user_referrer' in df.columns:
+            right_side.append('user_referrer')
         
         final = left_side+middle+right_side
         return df[final]
@@ -209,16 +211,23 @@ class _FormsiteProcessing:
         for results in [json['results'] for json in self.results]:
             results_list += results
         
-        dataframe = pd.DataFrame([self._process_row(json_row) for json_row in results_list])
+        series_list = [self._process_row(json_row) for json_row in tqdm(results_list, desc="Processing results", 
+                                                                        unit=' rows', 
+                                                                        ncols=80, 
+                                                                        dynamic_ncols=True, 
+                                                                        leave=False)]
+
+        dataframe = pd.DataFrame(series_list)
         combined_map = self.column_map
         combined_map.update(self.metadata_map)
-        dataframe.rename(columns=combined_map, inplace=True)
         dataframe = self._reorder_columns(dataframe)
+        dataframe.rename(columns=combined_map, inplace=True)
         dataframe = self._cast_dtypes(dataframe)
-        dataframe = dataframe.sort_values(by='Reference #', ascending=self.sort_asc).reset_index(drop=True)
         if self.interface.params.last is not None:
+            dataframe = dataframe.sort_values(by=['Reference #'], ascending=self.sort_asc).reset_index(drop=True)
             until = int(self.interface.params.last)
             dataframe = dataframe.head(until)
+        dataframe = dataframe.sort_values(by=['Reference #'], ascending=self.sort_asc).reset_index(drop=True)
         return dataframe
 
     def _string2datetime(self, old_date: str) -> dt:
@@ -229,11 +238,3 @@ class _FormsiteProcessing:
             return new_date
         except TypeError:
             return old_date
-
-    def _update_pbar_progress(self) -> None:
-        if isinstance(self.pbar, tqdm):
-            self.pbar.update(1)
-
-    def _update_pbar_desc(self, desc: str) -> None:
-        if isinstance(self.pbar, tqdm):
-            self.pbar.set_description(desc=desc, refresh=True)
