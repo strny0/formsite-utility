@@ -1,5 +1,5 @@
 """
-core.py
+interfaces.py
 
 `FormsiteInterface` `FormsiteParams` and `FormsiteCredentials` classes are defined here.
 Author: Jakub Strnad
@@ -8,23 +8,24 @@ Documentation: https://github.com/strny0/formsite-utility
 from __future__ import annotations
 import csv
 import asyncio
-import json
 from datetime import datetime as dt
 from datetime import timedelta as td
 from pathlib import Path
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Set, Union, Tuple, List
+from typing import Any, Optional, Set, Union, Tuple, List
 import re
 import os
 import pandas as pd
 from pytz import UnknownTimeZoneError, timezone as pytztimezone
-from aiohttp import request
+import requests
 from .downloader import _FormsiteDownloader
 from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
+from .auth import FormsiteCredentials
 from tqdm import tqdm
-__version__ = '1.3.7'
+__version__ = '1.3.12'
+__author__ = 'jakub.strnad@protonmail.com'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     """Shifts input date in the string format/datetime by timedelta in timezone offset.
@@ -48,17 +49,15 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
                 date = dt.strptime(str(date), "%Y-%m-%dT%H:%M:%SZ")
                 date = date + timezone_offset
             except:
-                pass
-            try:
-                date = dt.strptime(str(date), "%Y-%m-%d")
-                date = date + timezone_offset
-            except:
-                pass
-            try:
-                date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
-                date = date + timezone_offset
-            except:
-                raise
+                try:
+                    date = dt.strptime(str(date), "%Y-%m-%d")
+                    date = date + timezone_offset
+                except:
+                    try:
+                        date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
+                        date = date + timezone_offset
+                    except:
+                        raise
         except:
             raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
 
@@ -122,42 +121,6 @@ def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
 
     return offset_from_local, local_date
 
-def _sanitize_argument(argument: str, chars2remove: Dict[str,str]) -> str:
-    """Performs a find and replace on 'argument' based on mapping in chars2remove.
-
-    Args:
-        argument (str): text to perform find and replace on
-        chars2remove (List[str]): mapping of {find:replace}
-
-    Returns:
-        str: sanitized argument
-    """
-    for key, value in chars2remove.items():
-        argument = str(argument).replace(key, value)
-    return argument
-
-def _confirm_arg_format(arg_value: str, arg_name: str, flag: str, example: str) -> str:
-    """A boiler plate function to display a helpful error message.
-
-    Args:
-        arg_value (str): current value of the argument variable
-        arg_name (str): exact name of the argument variable
-        flag (str): flag used to invoke the argument in terminal
-        example (str): correct example value
-
-    Raises:
-        ValueError: Raised upon entering the incorrect argumant/format.
-
-    Returns:
-        str: the sanitized (quote-less) argument back
-    """
-    quotes_map = {'\'':'', '\"':''}
-    if not isinstance(arg_value, str):
-        raise ValueError(f'invalid format for argument {arg_value}, {arg_name}, '
-                        f'correct example: {flag} {example}')
-    arg_value = _sanitize_argument(arg_value, quotes_map)
-    return arg_value
-
 def _validate_path(path: str) -> str:
     """Converts input path into POSIX format. Creates parent directories if necessary.
 
@@ -199,21 +162,12 @@ class FormsiteParams:
     resultslabels: Optional[int] = None
     resultsview: Optional[int] = 11
     sort: Optional[str] = "desc"
-    col_id_sort: Optional[int] = None
-    search_equals: Optional[str] = None
-    col_id_equals: Optional[int] = None
-    search_contains: Optional[str] = None
-    col_id_contains: Optional[int] = None
-    search_begins: Optional[str] = None
-    col_id_begins: Optional[int] = None
-    search_ends: Optional[str] = None
-    col_id_ends: Optional[int] = None
-    search_method: Optional[str] = None
 
     def __post_init__(self):
         """Calls `_calculate_tz_offset` internal function."""
         self.timezone = 'local' if self.timezone is None else self.timezone
         self.timezone_offset, self.local_datetime = _calculate_tz_offset(self.timezone)
+        self.filters = dict()
 
     def get_params_as_dict(self, single_page_limit: int = 500) -> dict:
         """Generates a parameters dictionary that is later passed to params= kw argument when making API calls.
@@ -237,98 +191,126 @@ class FormsiteParams:
         if self.beforedate is not None:
             parsed_beforedate = _shift_param_date(self.beforedate, self.timezone_offset)
             results_params['before_date'] = parsed_beforedate
-        # 11 = all items + statistics results view
-        results_params['results_view'] = self.resultsview
-        if self.col_id_sort is not None:
-            results_params['sort_id'] = self.col_id_sort
-        if self.col_id_equals is not None and self.search_equals is not None:
-            results_params[f'search_equals[{self.col_id_equals}]'] = self.search_equals
-        if self.col_id_contains is not None and self.search_contains is not None:
-            results_params[f'search_contains[{self.col_id_contains}]'] = self.search_contains
-        if self.col_id_begins is not None and self.search_begins is not None:
-            results_params[f'search_begins[{self.col_id_begins}]'] = self.search_begins
-        if self.col_id_ends is not None and self.search_ends is not None:
-            results_params[f'search_ends[{self.col_id_ends}]'] = self.search_ends
-        if self.search_method is not None:
-            results_params['search_method'] = self.search_method
+        if self.resultsview is not None: # 11 = all items + statistics results view
+            results_params['results_view'] = self.resultsview
+
+        results_params.update(self.filters)
         return results_params
+    
+    def add_filter(self, search_type: str, col: Union[int, str], search_value: Any) -> None:
+        """Get results where item with ID x matches search_type value.
+        
+        You can edit `self.filters` directly to remove/change filters.
 
-    def get_items(self) -> dict:
+        Args:
+            search_type (str): One of {'equals', 'contains', 'begins', 'ends'}.
+            col (Union[int, str]): Column ID or metadata column name.
+            search_value (Any): Value to search.
+
+        Raises:
+            Exception: Entered invalid search type.
+        """
+        valid_types = {'equals', 'contains', 'begins', 'ends'}
+        if search_type in valid_types:
+            if search_type == 'equals':
+                self.filters.update({f"search_equals[{col}]": search_value})
+            elif search_type == 'contains':
+                self.filters.update({f"search_contains[{col}]": search_value})
+            elif search_type == 'begins':
+                self.filters.update({f"search_begins[{col}]": search_value})
+            elif search_type == 'ends':
+                self.filters.update({f"search_ends[{col}]": search_value})
+        else:
+            raise Exception(f'Invalid search type entered. Must be one of {valid_types}.')
+    
+    def set_filter_method(self, method: str):
+        """How to combine multiple search criteria.
+        
+        If you don't run this method, defaults to 'and'.
+
+        Args:
+            method (str): One of {'and', 'or'}
+
+        Raises:
+            Exception: Entered invalid method.
+        """
+        valid_methods = {'and', 'or'}
+        if method in valid_methods:
+            self.filters.update({"search_method": method})
+        else:
+            raise Exception(f'Invalid search method entered. Must be one of {valid_methods}.')
+
+    def get_items_as_dict(self) -> dict:
         """Returns a dict that gets parsed as parameters by aiohttp when making a request."""
-        return {"results_labels": self.resultslabels}
-
-@dataclass
-class FormsiteCredentials:
-    """Class representing formsite login information.
-
-    Args:
-        token (str): API access token
-
-        server (str): formsite server, can be found in your formsite url at the beginning, https://fs_.(...).com
-
-        directory (str): can also be found in your formsite URL, when accessing a specific form
-
-    Returns:
-        FormsiteCredentials instance
-    """
-    token: str
-    server: str
-    directory: str
-
-    def __post_init__(self) -> None:
-        """Confirms validity of input."""
-        self.confirm_validity()
-
-    def get_auth_header(self) -> dict:
-        """Returns a dictionary sent as a header in the API request for authorization purposes."""
-        return {"Authorization": f"bearer {self.token}", "Accept": "application/json"}
-
-    def confirm_validity(self) -> None:
-        """Checks if credentials input is in correct format."""
-        self.token = _confirm_arg_format(self.token, 'token', '-t', 'token')
-        self.server = _confirm_arg_format(self.server, 'server', '-s', 'fs1')
-        self.directory = _confirm_arg_format(self.directory, 'directory', '-d', 'Wa37fh')
+        if self.resultslabels is None:
+            return {}
+        elif isinstance(self.resultslabels, int):
+            return {"results_labels": self.resultslabels}
+        else:
+            raise ValueError(f"resultslabels must be an int, got '{self.resultslabels}'")
 
 @dataclass
 class FormsiteInterface:
-    """A base class for interacting with the formsite API.\n
-    Documentation: https://pypi.org/project/formsite-util/\n
-    `self.Data` pandas dataframe storing your results.\n
-    `self.Links` set storing all formsite links.\n
-    Methods of interest:\n
-    `FetchResults` stores results in self.Data of the instance of this class.\n
-    `ReturnResults` returns a pandas dataframe with the results.\n
-    `WriteResults` writes the dataframe to a file.\n
-    `ExtractLinks` stores extracted links in self.Links of the instance of this class.\n
-    `ReturnLinks` returns a touple with all links.\n
-    `WriteLinks` writes them to a file.\n
-    `ListAllForms` lists all forms on formsite, output them to console or save them to a file.\n
-    `ListColumns` lists all columns and column IDs of a form you set the interface for.\n
-    `DownloadFiles` downloads all files submitted to the form to a folder you specify.\n
-    `WriteLatestRef` writes highest reference number in results to a file you specify.\n
-    `display_progress = False` can be used to disable progressbars in console.
-    """
+    """A base class for interacting with the formsite API.
 
+    Documentation: https://pypi.org/project/formsite-util/
+
+    Author: https://github.com/strny0/formsite-utility
+
+    Note: You cannot change form_id, you must reinstantiate the class.
+
+    Args:
+        form_id (str): ID of the target form.
+        auth (FormsiteCredentials): Instance of the FormsiteCredentials class.
+        params (FormsiteParams): Instance of the FormsiteParams class.
+        display_progress (bool): Display tqdm progressbars. Defaults to True.
+    
+    Internal variables:
+        `Data` (DataFrame | None): Stores results as dataframe.
+        `Links` (Set[str] | None): Stores all formsite upload links in a set.
+        `items` (Dict[str,str], None): RAW items json.
+        `results` (List[Dict[str,str]] | list): RAW list of results jsons.
+        `url_forms` (str): url for fetching info about all forms.
+        `url_files` (str): url for downloading files.
+                
+    Methods of interest (and return types):
+        `FetchResults` (None): stores results in self.Data of the instance of this class.
+        `ReturnResults` (DataFrame): returns self.Results, if it's None, calls FetchResults first.
+        `WriteResults` (None): writes the dataframe to a file, if it's None, calls FetchResults first.
+        `ExtractLinks` (None): stores extracted links in self.Links of the instance of this class.
+        `ReturnLinks` (List[str]): returns a tuple of all links.
+        `WriteLinks` (None): writes them to a file.
+        `ListAllForms` (DataFrame | None): lists all forms on formsite, output them to console or save them to a file.
+        `ListColumns` (DataFrame | None): lists all columns and column IDs of a form you set the interface for.
+        `DownloadFiles` (None): downloads all files submitted to the form to a folder you specify.
+        `WriteLatestRef` (None): writes highest reference number in results to a file you specify.
+
+    Returns:
+        FormsiteInterface: An instance of the FormsiteInterface class.
+    """
     form_id: str
     auth: FormsiteCredentials
     params: FormsiteParams = FormsiteParams()
-    verbose: bool = False
-    Data: Optional[pd.DataFrame] = None
-    Links: Optional[set] = None
     display_progress: bool = True
-    api_call_delay: int = 5
 
     def __post_init__(self):
-        """Initializes private variables.\n
-        `url_base` is a base url in the format server.formsite.com/api/v2/directory\n
-        `url_files` is url_base/files\n
-        Also intializes HTTP headers for authorization and parameters.
+        """Initializes internal variables.
+        
+        Internal variables:
+            `Data` (DataFrame | None): Stores results as dataframe.
+            `Links` (Set[str] | None): Stores all formsite upload links in a set.
+            `items` (Dict[str,str], None): RAW items json.
+            `results` (List[Dict[str,str]] | list): RAW list of results jsons.
+            `url_forms` (str): url for fetching info about all forms.
+            `url_files` (str): url for downloading files.
         """
-        self.url_base: str = f"https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}"
+
+        self.url_forms = f"https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}/forms"
         self.url_files = f"https://{self.auth.server}.formsite.com/{self.auth.directory}/files/"
-        self.auth_dict = self.auth.get_auth_header()
-        self.params_dict = self.params.get_params_as_dict()
-        self.items_dict = self.params.get_items()
+        self.Data = None
+        self.Links = None
+        self.items = None
+        self.results = []
 
     def __enter__(self):
         """Allows use of context managers."""
@@ -338,33 +320,75 @@ class FormsiteInterface:
         """Allows use of context managers."""
         del self
 
-    def _perform_api_fetch(self) -> Tuple[dict, List[dict]]:
-        """Entrypoint for performing API calls (asynchronously)."""
-        api_handler = _FormsiteAPI(self, display_progress=self.display_progress, delay=self.api_call_delay)
-        items, results = api_handler.Start()
-        return items, results
+    def fetch_raw(self, get_items: bool = True, get_results: bool = True, short_delay:float=5.0, long_delay:float=15.0) -> Tuple[dict, List[dict]]:
+        """Performs calls to formsite REST API.
 
-    def _assemble_dataframe(self, items: dict, results: List[dict]) -> pd.DataFrame:
-        """Returns a pandas dataframe from received API data."""
-        if self.params.sort == 'desc':
-            sort = False
-        else:
-            sort = True
-        processing_handler = _FormsiteProcessing(items, results, self, sort_asc=sort, display_progress=self.display_progress)
+        Args:
+            get_items (bool, optional): Whether to get items. Defaults to True.
+            get_results (bool, optional): Whether to get results. Defaults to True.
+            short_delay (float, optional): Delay between API calls. Defaults to 5.0.
+            long_delay (float, optional): Delay between API calls when page > 3. Defaults to 15.0.
+
+        Returns:
+            Tuple[dict, List[dict]]: items_json, List of results_json
+        """
+        api_handler = _FormsiteAPI(form_id=self.form_id,
+                                   params=self.params,
+                                   auth=self.auth,
+                                   display_progress=self.display_progress, 
+                                   short_delay=short_delay,
+                                   long_delay=long_delay)
+        
+        return api_handler.Start(get_items=get_items, get_results=get_results)
+
+    def make_dataframe(self, items: dict, results: List[dict], column_ids_as_labels: bool = False) -> pd.DataFrame:
+        """Returns a pandas dataframe from received API data.
+
+        Args:
+            items (Dict[str, str]): raw items json from API.
+            results (List[dict]): raw results json from API.
+            column_ids_as_labels (bool, optional): Use default column IDs and metadata labels instead of results labels or question labels. Defaults to False.
+
+        Returns:
+            pd.DataFrame: DataFrame of the export.
+        """
+        sort_asc = self.params.sort != 'desc'
+        processing_handler = _FormsiteProcessing(items=items,
+                                                 results=results,
+                                                 timezone_offset=self.params.timezone_offset,
+                                                 sort_asc=sort_asc,
+                                                 column_ids_as_labels=column_ids_as_labels,
+                                                 display_progress=self.display_progress,
+                                                 params_last=self.params.last)
         return processing_handler.Process()
 
-    def FetchResults(self) -> None:
+    def FetchResults(self, column_ids_as_labels: bool = False) -> None:
         """Fetches results from formsite API according to specified parameters.\n
         Updates the `self.Data` variable which stores the dataframe.
+
+        Args:
+            column_ids_as_labels (bool, optional): Whether or not to use actual question labels or custom results labels for column names OR use just the column IDs/default metadata name. 
+            Defaults to False.
+        
+        Raises:
+            HTTPError: When received HTTP response code other than 200 or 429.
         """
         assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
-        items, results = self._perform_api_fetch()
-        self.Data = self._assemble_dataframe(items, results)
+        self.items, self.results = self.fetch_raw()
+        self.Data = self.make_dataframe(self.items, self.results, column_ids_as_labels=column_ids_as_labels)
 
-    def ReturnResults(self) -> pd.DataFrame:
-        """Returns pandas dataframe of results."""
+    def ReturnResults(self, column_ids_as_labels: bool = False) -> pd.DataFrame:
+        """Returns pandas dataframe of results.
+
+        Args:
+            column_ids_as_labels (bool, optional): Whether or not to use actual question labels or custom results labels for column names OR use just the column IDs/default metadata name.
+            Defaults to False.
+
+        Returns:
+            pd.DataFrame: DataFrame of results in specified parameters.
+        """
         if self.Data is None:
-            self.FetchResults()
+            self.FetchResults(column_ids_as_labels=column_ids_as_labels)
         return self.Data
 
     def _xtract(self, x: Any, pattern: re.Pattern, links_set: set = set(), links_filter_pattern: re.Pattern = None, pbar: tqdm = None):
@@ -391,7 +415,11 @@ class FormsiteInterface:
             pass
 
     def ExtractLinks(self, links_filter_re: str = r'.+') -> None:
-        """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form."""
+        """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form.
+
+        Args:
+            links_filter_re (str, optional): Only keep links that match the regex pattern string.. Defaults to r'.+'.
+        """
         if self.Data is None:
             self.FetchResults()
         links_re = fr'(https\:\/\/{self.auth.server}\.formsite\.com\/{self.auth.directory}\/files\/.*)'
@@ -413,7 +441,7 @@ class FormsiteInterface:
         except AttributeError:
             pass
 
-    def human_friendly_filesize(self, number: int) -> str:
+    def _human_friendly_filesize(self, number: int) -> str:
         """Converts a number (filesize in bytes) to more readable filesize with units."""
         reductions = 0
         while number >= 1024:
@@ -422,12 +450,15 @@ class FormsiteInterface:
         unit = {0: '', 1:'K', 2:'M', 3:'G', 4:'T', 5:'P', 6:'E'}
         return f"{number:0.2f} {unit.get(reductions, None)}B"
 
-    async def _list_all_forms(self) -> pd.DataFrame:
-        url_forms = f"{self.url_base}/forms"
-        async with request("GET", url_forms, headers=self.auth_dict) as response:
+    def _list_all_forms(self) -> pd.DataFrame:
+        """Internal function that performs the API fetch, data cleanup and formatting.
+
+        Returns:
+            pd.DataFrame: Cleaned DataFrame of all forms.
+        """
+        with requests.get(self.url_forms, headers=self.auth.get_auth_header()) as response:
             response.raise_for_status()
-            content = await response.content.read()
-            all_forms_json = json.loads(content.decode('utf-8'))['forms']
+            all_forms_json = response.json()['forms']
             # un-nest the stats object
             for row in all_forms_json:
                 for val in row["stats"]:
@@ -454,7 +485,7 @@ class FormsiteInterface:
         Returns:
             pd.DataFrame: Dataframe with all relevant forms data.    
         """
-        forms_df = asyncio.get_event_loop().run_until_complete(self._list_all_forms())
+        forms_df = self._list_all_forms()
         if display:
             pd.set_option('display.max_rows', None)
             pd.set_option('display.max_columns', None)
@@ -462,8 +493,9 @@ class FormsiteInterface:
             pd.set_option('display.max_colwidth', 42) # ensures width < 80 cols
             forms_df = forms_df[['name','resultsCount','filesSize','form_id']]
             forms_df.sort_values(by=[sort_by], inplace=True, ascending=False, ignore_index=True)
+            forms_df.reset_index(drop=True, inplace=True)
             forms_df = forms_df.append({'name':'Total:', 'resultsCount':forms_df['resultsCount'].sum(), 'filesSize':forms_df['filesSize'].sum(),'form_id':f'{forms_df.shape[0]} forms'}, ignore_index=True)
-            forms_df['filesSize'] = forms_df['filesSize'].apply(lambda x: self.human_friendly_filesize(int(x)))
+            forms_df['filesSize'] = forms_df['filesSize'].apply(lambda x: self._human_friendly_filesize(int(x)))
             forms_df.set_index('name',inplace=True)
             print(forms_df)
 
@@ -476,7 +508,11 @@ class FormsiteInterface:
         return forms_df
 
     def ReturnLinks(self, links_regex: str = r'.+') -> Set[str]:
-        """Returns a set of urls of files saved on formsite servers."""
+        """Stores a set of links in `self.Links` of files saved on formsite servers, that were submitted to the specified form.
+
+        Args:
+            links_filter_re (str, optional): Only keep links that match the regex pattern string.. Defaults to r'.+'.
+        """
         if self.Links is None or links_regex != r'.+':
             self.ExtractLinks(links_filter_re=links_regex)
         return self.Links
@@ -514,15 +550,15 @@ class FormsiteInterface:
         Please customize `max_concurrent_downloads` to your specific use case.
 
         Args:
-            download_folder (str): Path to target download folder
-            max_concurrent_downloads (int, optional): Defaults to 10.
-            links_regex (str, optional): Example: r'.+\.jpg$' would get all files that end with .jpg. Defaults to r'.+'.
-            filename_regex (str, optional): Removes characters that don't match regex from remote-filename. Defaults to r''.
-            overwrite_existing (bool, optional): Whether or not to overwrite existing files. Defaults to True.
-            report_downloads (bool, optional): Generates a report .txt file. Defaults to False.
-            timeout (float, optional): In seconds, specify how long to wait for connection/download. Defaults to 80.
-            retries (int, optional): In case of failed download or a timeout error, how many times to retry download. Defaults to 1.
-            strip_prefix (bool, optional): If True, strips f-xxx-xxx prefix. Defaults to False.
+            `download_folder` (str): Path to target download folder
+            `max_concurrent_downloads` (int, optional): Defaults to 10.
+            `links_regex` (str, optional): Example: r'.+\\.jpg$' would get all files that end with .jpg. Defaults to r'.+'.
+            `filename_regex` (str, optional): Removes characters that don't match regex from remote-filename. Defaults to r''.
+            `overwrite_existing` (bool, optional): Whether or not to overwrite existing files. Defaults to True.
+            `report_downloads` (bool, optional): Generates a report .txt file. Defaults to False.
+            `timeout` (float, optional): In seconds, specify how long to wait for connection/download. Defaults to 80.
+            `retries` (int, optional): In case of failed download or a timeout error, how many times to retry download. Defaults to 1.
+            `strip_prefix` (bool, optional): If True, strips f-xxx-xxx prefix. Defaults to False.
         
         Raises:
             AssertationError: if len(self.Links) < 1, ie. there is nothing to download.
@@ -544,19 +580,37 @@ class FormsiteInterface:
                                                strip_prefix=strip_prefix)
         asyncio.get_event_loop().run_until_complete(download_handler.Start())
 
-    def ListColumns(self) -> None:
+    def ListColumns(self, print_stdout: bool = True) -> pd.DataFrame:
         """Prints list of columns (items, usercontrols) and their respective formsite IDs."""
-        api_handler = _FormsiteAPI(self)
+        api_handler = _FormsiteAPI(form_id=self.form_id,
+                                   params=self.params,
+                                   auth=self.auth,
+                                   display_progress=self.display_progress)
         api_handler.check_pages = False
-        items = asyncio.get_event_loop().run_until_complete(
-            api_handler.Start(only_items=True))
-        items = pd.DataFrame(json.loads(items)['items'], columns=['id', 'label', 'position'])
-        items = items.set_index('id')
-        pd.set_option('display.max_rows', None)
-        print(items)
-        print('----------------')
-        print(f"Results labels: {self.params.resultslabels}")
-        print(f"Results view: {self.params.resultsview}")
+        items, _ = api_handler.Start(get_items=True, get_results=False)
+        items = pd.DataFrame(items['items'], columns=['id', 'label', 'position'])
+        if print_stdout:
+            print("id : label")
+            print('-----items----')
+            items.apply(lambda row: print(f"{row['id']} : {row['label']}"), axis=1)
+            print('---metadata---')
+            print('id : Reference #')
+            print('result_status : Status')
+            print('date_start : Start Time')
+            print('date_finish : Finish Time')
+            print('date_update : Date')
+            print('user_ip : User')
+            print('user_browser : Browser')
+            print('user_device : Device')
+            print('user_referrer : Referrer')
+            print('payment_status : Payment Status')
+            print('payment_amount : Payment Amount Paid')
+            print('login_username : Login Username')
+            print('login_email : Login Email')
+            print('--parameters--')
+            print(f"Results labels: {self.params.resultslabels}")
+            print(f"Results view: {self.params.resultsview}")
+        return items
 
     def WriteResults(self, destination_path: str,
                      encoding: str = "utf-8",
@@ -568,12 +622,12 @@ class FormsiteInterface:
         Supported output formats are (`.csv`|`.xlsx`|`.pkl`|`.pickle`|`.json`|`.parquet`|`.md`|`.txt`)
 
         Args:
-            destination_path (str): path to output file
-            encoding (str, optional): Defaults to "utf-8".
-            line_terminator (str, optional): Defaults to '\n'.
-            separator (str, optional): Defaults to ",".
-            date_format (str, optional): Defaults to "%Y-%m-%d %H:%M:%S".
-            quoting (int, optional): Pass values from csv.QUOTE_ enum. Defaults to csv.QUOTE_MINIMAL.
+            `destination_path` (str): path to output file
+            `encoding` (str, optional): Defaults to "utf-8".
+            `line_terminator` (str, optional): Defaults to '\\n'.
+            `separator` (str, optional): Defaults to ",".
+            `date_format` (str, optional): Defaults to "%Y-%m-%d %H:%M:%S".
+            `quoting` (int, optional): Pass values from csv.QUOTE_ enum from the python's csv module. Defaults to csv.QUOTE_MINIMAL.
         """
         if self.Data is None:
             self.FetchResults()
@@ -601,18 +655,27 @@ class FormsiteInterface:
                     0) if column_name in renamer else column_name).to_json(output_file, orient='records', date_format='iso')
         elif re.search('.+\\.xlsx$', output_file) is not None:
             print('Writing to excel (this can be slow for large files!)')
-            self.Data.to_excel(output_file, index=False,
-                               engine='openpyxl', freeze_panes=(1, 1))
+            self.Data.to_excel(output_file, index=False)
         else:
             self.Data.to_csv(output_file, index=False, chunksize=1024, encoding=encoding,
                              date_format=date_format, line_terminator=line_terminator, sep=separator, quoting=quoting)
 
     def WriteLatestRef(self, destination_path: str) -> None:
-        """Writes `max(self.Data['Reference #])` to a file."""
+        """Writes `max(self.Data['Reference #])` to a file.
+
+        Args:
+            `destination_path` (str): A Valid path to an output csv file.
+        """
         if self.Data is None:
             self.FetchResults()
 
         output_file = _validate_path(destination_path)
-        latest_ref = max(self.Data['Reference #'])
-        with open(output_file, 'w') as writer:
-            writer.write(str(latest_ref))
+        if 'id' in self.Data.columns or 'Reference #' in self.Data.columns:
+            try:
+                latest_ref = max(self.Data['Reference #'])
+            except KeyError:
+                latest_ref = max(self.Data['id'])
+            with open(output_file, 'w') as writer:
+                writer.write(str(latest_ref))
+        else:
+            print("No 'Reference #' or 'id' column to write.")
