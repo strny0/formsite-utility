@@ -8,12 +8,16 @@ import csv # used in an eval
 import sys
 from time import perf_counter
 import argparse
-from formsite_util import FormsiteParams, FormsiteInterface, FormsiteCredentials
-from formsite_util.internal.interfaces import __version__
-# try:
-#     from .internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
-# except ImportError:
-#     from internal.interfaces import FormsiteCredentials, FormsiteInterface, FormsiteParams, __version__
+
+from requests.models import HTTPError
+# from formsite_util import FormsiteParams, FormsiteInterface, FormsiteCredentials
+# from formsite_util.internal.interfaces import __version__
+try:
+    from .internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+    from .internal.auth import FormsiteCredentials
+except ImportError:
+    from internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+    from internal.auth import FormsiteCredentials
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
@@ -77,12 +81,11 @@ def gather_args() -> argparse.Namespace:
                           "\nThis date is in your local timezone, unless specified otherwise.")
     g_params.add_argument('--sort', choices=['asc', 'desc'], type=str, default="desc",
                           help="Determines how the output CSV will be sorted. Defaults to descending.")
-    g_params.add_argument('--resultslabels', type=int, default=0,
+    g_params.add_argument('--resultslabels', type=int, default=None,
                           help="Use specific results labels for your CSV headers."
-                          "\nDefaults to 0 = first available set of results labels or default question labels.")
-    g_params.add_argument('--resultsview', type=int, default=11,
-                          help="Use specific results view for your CSV headers."
-                          "\nDefaults to 11 = Items+Statistics. Other values currently not supported.")
+                          "\nDefaults to `None = Question` labels.")
+    g_params.add_argument('--resultsview', type=int, default=None,
+                          help="Use specific results view for your CSV headers. This also speeds up requests for forms with many columns you don't need.")
     g_params.add_argument('-T', '--timezone', default='local',
                           help="Specify the timezone relative to which you want your results."
                           "\nBy default, results come relative to your local timezone."
@@ -95,10 +98,13 @@ def gather_args() -> argparse.Namespace:
                           "\n'America/New_York'"
                           "\n'Asia/Bangkok'")
     g_params.add_argument('--delay', type=int, default=5, help='Delay in seconds between each API call.')
+    g_params.add_argument('--delay_long', type=int, default=5, help='Delay in seconds between each API call, applies when page > 3.')
     g_output.add_argument('-o', '--output_file', nargs='?', default=False, const='default',
                           help="Specify output file name and location."
                           "\nDefaults to export_yyyymmdd_formID.csv in the folder of the script."
                           "\nSupported output formats are (.csv|.xlsx|.pkl|.pickle|.json|.parquet|.md|.txt)")
+    g_output.add_argument('--raw', action='store_false', default=True,
+                          help="Instead of regular headers uses default metadata and items ids")
     g_output.add_argument('--encoding', type=str, default='utf-8',
                           help="Specify encoding of the output file (if output format supports it)."
                           "\nDefaults to 'utf-8'")
@@ -165,8 +171,6 @@ def gather_args() -> argparse.Namespace:
                            help="You may chose what to sort -L commands by in descending order. Defaults to name.")
     g_debug.add_argument('--disable_progressbars', action="store_true", default=False,
                          help="If you use this flag, program will not display progressbars to console.")
-    g_debug.add_argument('-v', '--verbose', action="store_true", default=False,
-                         help="If you use this flag, program will log progress in greater detail.")
     return parser.parse_known_args()[0]
 
 def main():
@@ -190,7 +194,6 @@ def main():
     interface = FormsiteInterface(arguments.form,
                                   authorization,
                                   params=parameters,
-                                  verbose=arguments.verbose,
                                   display_progress=not arguments.disable_progressbars)
 
     if arguments.list_forms is not False:
@@ -198,16 +201,16 @@ def main():
             interface.ListAllForms(display=True, sort_by=arguments.sort_list_by)
         else:
             interface.ListAllForms(save2csv=arguments.list_forms)
-            print(f'saved list of forms to {arguments.list_forms}')
+            print(f'\nsaved list of forms to {arguments.list_forms}')
         return 0
 
     if arguments.list_columns is not False:
-        interface.ListColumns()
+        _ = interface.ListColumns(print_stdout=True)
         return 0
 
     if arguments.output_file is not False:
         if interface.Data is None:
-            interface.FetchResults()
+            interface.FetchResults(column_ids_as_labels=arguments.raw)
         line_term = {"LF":"\n", "CR":"\r", "CRLF":"\r\n"}
         if arguments.output_file == 'default':
             default_filename = f'./export_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.csv'
@@ -220,11 +223,11 @@ def main():
                                separator=arguments.separator,
                                line_terminator=line_term.get(arguments.line_terminator),
                                quoting=getattr(csv, f'QUOTE_{arguments.quoting}'))
-        print("export complete")
+        print("\nexport complete")
 
     if arguments.extract_links is not False:
         if interface.Data is None:
-            interface.FetchResults()
+            interface.FetchResults(column_ids_as_labels=arguments.raw)
         if arguments.extract_links == 'default':
             default_filename = f'./links_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.txt'
             interface.WriteLinks(
@@ -236,7 +239,7 @@ def main():
 
     if arguments.download_links is not False:
         if interface.Data is None:
-            interface.FetchResults()
+            interface.FetchResults(column_ids_as_labels=arguments.raw)
         if arguments.download_links == 'default':
             default_folder = f'./download_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}'
         else:
@@ -251,25 +254,32 @@ def main():
                                 timeout=arguments.timeout,
                                 retries=arguments.retries,
                                 strip_prefix=arguments.stripprefix)
-        print("download complete")
+        print("\ndownload complete")
 
     if arguments.store_latest_ref is not False:
         if interface.Data is None:
-            interface.FetchResults()
+            interface.FetchResults(column_ids_as_labels=arguments.raw)
         if arguments.store_latest_ref == 'default':
             default_filename = './latest_ref.txt'
         else:
             default_filename = arguments.store_latest_ref
 
         interface.WriteLatestRef(default_filename)
-        print("latest reference saved")
+        print("\nlatest reference saved")
 
-    print(f'done in {(perf_counter() - t_0):0.2f} seconds!')
+    print(f'\ndone in {(perf_counter() - t_0):0.2f} seconds!')
     return 0
 
 
 if __name__ == '__main__':
     if sys.version_info[0] >= 3 and sys.version_info[1] > 5:
-        sys.exit(main())
+        try:
+            exc_code = main()
+        except HTTPError as err:
+            print('\r\n')
+            print(err)
+            print('In case of a \'NullPointerException\', contact Formsite support.')
+            exc_code = 1
+        sys.exit(exc_code)
     else:
         raise Exception("Unsupported python version.")

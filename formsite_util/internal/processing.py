@@ -4,8 +4,8 @@ processing.py
 This module handles processing of results from API jsons. Returns a dataframe.
 """
 from __future__ import annotations
-from datetime import datetime as dt
-from typing import Any, Dict, Iterable
+from datetime import datetime, timedelta
+from typing import Dict, Iterable
 from dataclasses import dataclass
 from tqdm import tqdm
 import pandas as pd
@@ -13,16 +13,30 @@ import pandas as pd
 @dataclass
 class _FormsiteProcessing:
 
-    """Handles processing of results from API jsons. Invoked with `self.Process()`"""
+    """Handles processing of results from API jsons. Invoked with `self.Process()`
+    
+    Args:
+        `items` (dict): json of the items API response.
+        `results` (List[dict]): list of jsons of the results API response.
+        `timezone_offset` (timedelta): offset to shift date_update, date_start, date_finish columns by relative to local timezone. Additive, so to subtract, input negative timedelta.
+        `sort_asc` (bool, optional): Whether to sort export by ascending (Reference # or Date if applicable). Defaults to False.
+        `column_ids_as_labels` (bool, optional): If True, doesn't rename columns by results labels, keeps default metadata names and column IDs. Defaults to False.
+        `display_progress` (int, optional): If True, displays tqdm progressbar. Defaults to True.
+        `params_last` (int, optional): Don't forget to trigger this if you are using the `last` parameter. Trimms excess results. Defaults to None.
+
+    Returns:
+        _FormsiteProcessing: An instance of the _FormsiteProcessing class. Start API fetches with `.Start()` method.
+    """
     items: dict
     results: Iterable[dict]
-    interface: Any
+    timezone_offset: timedelta
     sort_asc: bool = False
+    column_ids_as_labels: bool = False
     display_progress: bool = True
+    params_last: int = None
 
     def __post_init__(self):
         """Loads json strings as json objects."""
-        self.timezone_offset = self.interface.params.timezone_offset
         self.column_map = self._generate_columns()
         self.metadata_map = self._generate_metadata()
 
@@ -47,23 +61,20 @@ class _FormsiteProcessing:
         Returns:
             Dict[str,str]: Mapping of metadata_ID: metadata_Label
         """
-        metadata_map = {
-            'id':'Reference #',
-            'result_status': 'Status',
-            'date_start': 'Start Time',
-            'date_finish': 'Finish Time',
-            'date_update': 'Date',
-            'user_ip': 'User',
-            'user_browser': 'Browser',
-            'user_device': 'Device',
-            'user_referrer': 'Referrer',
-            'payment_status': 'Payment Status',
-            'payment_amount': 'Payment Amount Paid',
-            'login_username': 'Login Username',
-            'login_email': 'Login Email',
-        }
-        return metadata_map
-       
+        return {'id':'Reference #',
+                'result_status': 'Status',
+                'date_start': 'Start Time',
+                'date_finish': 'Finish Time',
+                'date_update': 'Date',
+                'user_ip': 'User',
+                'user_browser': 'Browser',
+                'user_device': 'Device',
+                'user_referrer': 'Referrer',
+                'payment_status': 'Payment Status',
+                'payment_amount': 'Payment Amount Paid',
+                'login_username': 'Login Username',
+                'login_email': 'Login Email'}
+
     def _process_items_row(self, items: dict) -> pd.Series:
         """Converts a single 'items' record to a pandas Series
 
@@ -99,7 +110,7 @@ class _FormsiteProcessing:
         if 'items' in result:
             del result['items']
         return pd.Series(result)
-    
+
     def _process_row(self, in_json: dict):
         """Merges metadata_row and items_row into a single row.
 
@@ -113,8 +124,8 @@ class _FormsiteProcessing:
         metadata = self._process_metadata_row(in_json)
         concated = pd.concat((metadata, items), axis=0)
         return concated
-    
-    def _reorder_columns(self, df: pd.DataFrame):
+
+    def _reorder_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """Orders existing columns into a standard export format.
         First is always Reference #, Status, then Items, then Remaining metadata.
 
@@ -161,11 +172,10 @@ class _FormsiteProcessing:
             right_side.append('user_device')
         if 'user_referrer' in df.columns:
             right_side.append('user_referrer')
-        
         final = left_side+middle+right_side
         return df[final]
-    
-    def _cast_dtypes(self, df: pd.DataFrame):
+
+    def _cast_dtypes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Casts the type of each existing column to their standard form.
 
         Args:
@@ -174,66 +184,79 @@ class _FormsiteProcessing:
         Returns:
             pd.DataFrame: DataFrame with set dtypes
         """
-        if 'Reference #' in df.columns:
-            df['Reference #'] = df['Reference #'].astype(int)
-        if 'Status' in df.columns:
-            df['Status'] = df['Status'].astype(str)
-        if 'Payment Status' in df.columns:
-            df['Payment Status'] = df['Payment Status'].astype(str)
-        if 'Payment Amount Paid' in df.columns:
-            df['Payment Amount Paid'] = df['Payment Amount Paid'].astype(str)
-        if 'Login Username' in df.columns:
-            df['Login Username'] = df['Login Username'].astype(str)
-        if 'Login Email' in df.columns:
-            df['Login Email'] = df['Login Email'].astype(str)
-        if 'Date' in df.columns:
-            df['Date'] = df['Date'].apply(self._string2datetime)
-        if 'Start Time' in df.columns:
-            df['Start Time'] = df['Start Time'].apply(self._string2datetime)
-        if 'Finish Time' in df.columns:
-            df['Finish Time'] = df['Finish Time'].apply(self._string2datetime)
+        if 'id' in df.columns:
+            df['id'] = df['id'].astype(int)
+        if 'result_status' in df.columns:
+            df['result_status'] = df['result_status'].astype(str)
+        if 'payment_status' in df.columns:
+            df['payment_status'] = df['payment_status'].astype(str)
+        if 'payment_amount' in df.columns:
+            df['payment_amount'] = df['payment_amount'].astype(str)
+        if 'login_username' in df.columns:
+            df['login_username'] = df['login_username'].astype(str)
+        if 'login_email' in df.columns:
+            df['login_email'] = df['login_email'].astype(str)
+        if 'date_update' in df.columns:
+            df['date_update'] = df['date_update'].apply(self._string2datetime)
+        if 'date_start' in df.columns:
+            df['date_start'] = df['date_start'].apply(self._string2datetime)
+        if 'date_finish' in df.columns:
+            df['date_finish'] = df['date_finish'].apply(self._string2datetime)
         if 'Duration (s)' in df.columns:
             df['Duration (s)'] = df['Start Time'] - df['Start Time']
             df['Duration (s)'] = df['Duration (s)'].apply(lambda x: x.total_seconds())
-        if 'User' in df.columns:
-            df['User'] = df['User'].astype(str)
-        if 'Browser' in df.columns:
-            df['Browser'] = df['Browser'].astype(str)
-        if 'Device' in df.columns:
-            df['Device'] = df['Device'].astype(str)
-        if 'Referrer' in df.columns:
-            df['Referrer'] = df['Referrer'].astype(str)
+        if 'user_ip' in df.columns:
+            df['user_ip'] = df['user_ip'].astype(str)
+        if 'user_browser' in df.columns:
+            df['user_browser'] = df['user_browser'].astype(str)
+        if 'user_device' in df.columns:
+            df['user_device'] = df['user_device'].astype(str)
+        if 'user_referrer' in df.columns:
+            df['user_referrer'] = df['user_referrer'].astype(str)
         return df
+
+    def _sort_data(self, df: pd.DataFrame, ascending_bool: bool) -> pd.DataFrame:
+        try:
+            df = df.sort_values(by=['Reference #'], ascending=ascending_bool)
+        except KeyError:
+            try:
+                df = df.sort_values(by=['Date'], ascending=ascending_bool)
+            except KeyError:
+                pass
+
+        return df.reset_index(drop=True)
 
     def Process(self) -> pd.DataFrame:
         """Loads jsons in results list as dataframes and concats them."""
         results_list = []
         for results in [json['results'] for json in self.results]:
             results_list += results
-        
-        series_list = [self._process_row(json_row) for json_row in tqdm(results_list, desc="Processing results", 
-                                                                        unit=' rows', 
-                                                                        ncols=80, 
-                                                                        dynamic_ncols=True, 
+
+        series_list = [self._process_row(json_row) for json_row in tqdm(results_list, desc="Processing results",
+                                                                        unit=' rows',
+                                                                        ncols=80,
+                                                                        dynamic_ncols=True,
                                                                         leave=False)]
 
         dataframe = pd.DataFrame(series_list)
         combined_map = self.column_map
         combined_map.update(self.metadata_map)
         dataframe = self._reorder_columns(dataframe)
-        dataframe.rename(columns=combined_map, inplace=True)
         dataframe = self._cast_dtypes(dataframe)
-        if self.interface.params.last is not None:
-            dataframe = dataframe.sort_values(by=['Reference #'], ascending=self.sort_asc).reset_index(drop=True)
-            until = int(self.interface.params.last)
+        if self.column_ids_as_labels:
+            dataframe.rename(columns=combined_map, inplace=True)
+        dataframe = self._cast_dtypes(dataframe)
+        if self.params_last is not None:
+            dataframe = self._sort_data(dataframe, False)
+            until = int(self.params_last)
             dataframe = dataframe.head(until)
-        dataframe = dataframe.sort_values(by=['Reference #'], ascending=self.sort_asc).reset_index(drop=True)
+        dataframe = self._sort_data(dataframe, self.sort_asc)
         return dataframe
 
-    def _string2datetime(self, old_date: str) -> dt:
+    def _string2datetime(self, old_date: str) -> datetime:
         """Converts ISO 8601 datetime string to datetime class."""
         try:
-            new_date = dt.strptime(old_date, "%Y-%m-%dT%H:%M:%SZ") # ISO 8601 standard
+            new_date = datetime.strptime(old_date, "%Y-%m-%dT%H:%M:%SZ") # ISO 8601 standard
             new_date = new_date + self.timezone_offset
             return new_date
         except TypeError:
