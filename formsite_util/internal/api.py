@@ -12,7 +12,6 @@ from requests.exceptions import HTTPError
 from tqdm import tqdm
 from .auth import FormsiteCredentials
 
-
 @dataclass
 class _FormsiteAPI:
     """Handles retreival of results from your formsite form. Invoked with `self.Start()` method.
@@ -64,7 +63,7 @@ class _FormsiteAPI:
         """Performs all API calls to formsite servers asynchronously"""
         items, results = (None, [])
         with requests.session() as self.session:
-            self.session.headers.update(self.auth.get_auth_header())
+            self.session.headers.update(self.auth.get_auth_header())          
             results = self.get_results() if get_results else []
             items = self.fetch_items() if get_items else None
             self._update_pbar_progress()
@@ -77,6 +76,10 @@ class _FormsiteAPI:
     
     def get_results(self) -> List[dict]:
         """Fetches all results that match input parameters from a form.
+        
+        Raises:
+            Exception: 
+            HTTPError: 
 
         Returns:
             List[dict]: List of pages of results.
@@ -108,9 +111,6 @@ class _FormsiteAPI:
                     except Exception as err:
                         print('This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.')
                         raise err
-                
-                
-                
         return results
                 
     def fetch_results(self, params: dict, page: int) -> dict:
