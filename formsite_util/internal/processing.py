@@ -20,7 +20,7 @@ class _FormsiteProcessing:
         `results` (List[dict]): list of jsons of the results API response.
         `timezone_offset` (timedelta): offset to shift date_update, date_start, date_finish columns by relative to local timezone. Additive, so to subtract, input negative timedelta.
         `sort_asc` (bool, optional): Whether to sort export by ascending (Reference # or Date if applicable). Defaults to False.
-        `column_ids_as_labels` (bool, optional): If True, doesn't rename columns by results labels, keeps default metadata names and column IDs. Defaults to False.
+        `use_resultslabels` (bool, optional): True: Use question labels or resultslabels if available. False: Use column IDs and metadata names. Defaults to True.
         `display_progress` (int, optional): If True, displays tqdm progressbar. Defaults to True.
         `params_last` (int, optional): Don't forget to trigger this if you are using the `last` parameter. Trimms excess results. Defaults to None.
 
@@ -31,7 +31,7 @@ class _FormsiteProcessing:
     results: Iterable[dict]
     timezone_offset: timedelta
     sort_asc: bool = False
-    column_ids_as_labels: bool = False
+    use_resultslabels: bool = True
     display_progress: bool = True
     params_last: int = None
 
@@ -46,13 +46,12 @@ class _FormsiteProcessing:
         Returns:
             Dict[int,str]: Mapping of ID:Label
         """
-        assert isinstance(self.items, dict), "items.json is empty"
-        assert len(self.items) > 0, "items.json is empty"
         column_map = dict()
-        for item in self.items['items']:
-            column_map[int(item['id'])] = item['label']
-        colmns_list = list(column_map.values())
-        assert len(colmns_list) > 0, "Columns list is empty"
+        try:
+            for item in self.items['items']:
+                column_map[int(item['id'])] = item['label']
+        except TypeError:
+            pass
         return column_map
 
     def _generate_metadata(self) -> Dict[str,str]:
@@ -70,6 +69,7 @@ class _FormsiteProcessing:
                 'user_browser': 'Browser',
                 'user_device': 'Device',
                 'user_referrer': 'Referrer',
+                'user_os': "",
                 'payment_status': 'Payment Status',
                 'payment_amount': 'Payment Amount Paid',
                 'login_username': 'Login Username',
@@ -145,7 +145,15 @@ class _FormsiteProcessing:
             left_side.append('id')
         if 'result_status' in df.columns:
             left_side.append('result_status')
-        middle = [col if (col in df.columns) and (col not in self.metadata_map.keys()) else None for col in list(self.column_map.keys())]
+        
+        if len(self.column_map.keys()) > 0:
+            middle = [col if (col in df.columns) and (col not in self.metadata_map.keys()) else None for col in list(self.column_map.keys())]
+        else:
+            middle = []
+            for col in list(df.columns):
+                if col not in list(self.metadata_map.keys()):
+                    middle.append(col)
+            
         while None in middle:
             middle.remove(None)
         if 'payment_status' in df.columns:
@@ -239,13 +247,12 @@ class _FormsiteProcessing:
                                                                         leave=False)]
 
         dataframe = pd.DataFrame(series_list)
-        combined_map = self.column_map
-        combined_map.update(self.metadata_map)
         dataframe = self._reorder_columns(dataframe)
         dataframe = self._cast_dtypes(dataframe)
-        if self.column_ids_as_labels:
+        if self.use_resultslabels:
+            combined_map = self.column_map
+            combined_map.update(self.metadata_map)
             dataframe.rename(columns=combined_map, inplace=True)
-        dataframe = self._cast_dtypes(dataframe)
         if self.params_last is not None:
             dataframe = self._sort_data(dataframe, False)
             until = int(self.params_last)

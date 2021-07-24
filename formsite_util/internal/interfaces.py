@@ -24,7 +24,7 @@ from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 from .auth import FormsiteCredentials
 from tqdm import tqdm
-__version__ = '1.3.12'
+__version__ = '1.3.13'
 __author__ = 'jakub.strnad@protonmail.com'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
@@ -341,13 +341,13 @@ class FormsiteInterface:
         
         return api_handler.Start(get_items=get_items, get_results=get_results)
 
-    def make_dataframe(self, items: dict, results: List[dict], column_ids_as_labels: bool = False) -> pd.DataFrame:
+    def make_dataframe(self, items: dict, results: List[dict], use_resultslabels: bool = False) -> pd.DataFrame:
         """Returns a pandas dataframe from received API data.
 
         Args:
             items (Dict[str, str]): raw items json from API.
             results (List[dict]): raw results json from API.
-            column_ids_as_labels (bool, optional): Use default column IDs and metadata labels instead of results labels or question labels. Defaults to False.
+            use_resultslabels (bool, optional): True: Use question labels or resultslabels if available. False: Use column IDs and metadata names. Defaults to True.
 
         Returns:
             pd.DataFrame: DataFrame of the export.
@@ -357,25 +357,28 @@ class FormsiteInterface:
                                                  results=results,
                                                  timezone_offset=self.params.timezone_offset,
                                                  sort_asc=sort_asc,
-                                                 column_ids_as_labels=column_ids_as_labels,
+                                                 use_resultslabels=use_resultslabels,
                                                  display_progress=self.display_progress,
                                                  params_last=self.params.last)
         return processing_handler.Process()
 
-    def FetchResults(self, column_ids_as_labels: bool = False) -> None:
+    def FetchResults(self, use_resultslabels: bool = True) -> None:
         """Fetches results from formsite API according to specified parameters.\n
         Updates the `self.Data` variable which stores the dataframe.
 
         Args:
-            column_ids_as_labels (bool, optional): Whether or not to use actual question labels or custom results labels for column names OR use just the column IDs/default metadata name. 
-            Defaults to False.
+            use_resultslabels (bool, optional): True: Use question labels or resultslabels if available. False: Use column IDs and metadata names. Defaults to True.
         
         Raises:
             HTTPError: When received HTTP response code other than 200 or 429.
         """
         assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
-        self.items, self.results = self.fetch_raw()
-        self.Data = self.make_dataframe(self.items, self.results, column_ids_as_labels=column_ids_as_labels)
+        if use_resultslabels:
+            self.items, self.results = self.fetch_raw(get_items=True, get_results=True)
+        else:
+            self.items, self.results = self.fetch_raw(get_items=False, get_results=True)
+            
+        self.Data = self.make_dataframe(self.items, self.results, use_resultslabels=use_resultslabels)
 
     def ReturnResults(self, column_ids_as_labels: bool = False) -> pd.DataFrame:
         """Returns pandas dataframe of results.
@@ -388,7 +391,7 @@ class FormsiteInterface:
             pd.DataFrame: DataFrame of results in specified parameters.
         """
         if self.Data is None:
-            self.FetchResults(column_ids_as_labels=column_ids_as_labels)
+            self.FetchResults(use_resultslabels=column_ids_as_labels)
         return self.Data
 
     def _xtract(self, x: Any, pattern: re.Pattern, links_set: set = set(), links_filter_pattern: re.Pattern = None, pbar: tqdm = None):
@@ -613,8 +616,8 @@ class FormsiteInterface:
         return items
 
     def WriteResults(self, destination_path: str,
-                     encoding: str = "utf-8",
-                     line_terminator: str = '\n',
+                     encoding: str = "utf-8-sig",
+                     line_terminator: str = 'os_default',
                      separator: str = ",",
                      date_format: str = "%Y-%m-%d %H:%M:%S",
                      quoting: int = csv.QUOTE_MINIMAL) -> None:
@@ -624,7 +627,7 @@ class FormsiteInterface:
         Args:
             `destination_path` (str): path to output file
             `encoding` (str, optional): Defaults to "utf-8".
-            `line_terminator` (str, optional): Defaults to '\\n'.
+            `line_terminator` (str, optional): Defaults to 'os_default'.
             `separator` (str, optional): Defaults to ",".
             `date_format` (str, optional): Defaults to "%Y-%m-%d %H:%M:%S".
             `quoting` (int, optional): Pass values from csv.QUOTE_ enum from the python's csv module. Defaults to csv.QUOTE_MINIMAL.
@@ -657,6 +660,7 @@ class FormsiteInterface:
             print('Writing to excel (this can be slow for large files!)')
             self.Data.to_excel(output_file, index=False)
         else:
+            line_terminator = os.linesep if line_terminator == 'os_default' else line_terminator
             self.Data.to_csv(output_file, index=False, chunksize=1024, encoding=encoding,
                              date_format=date_format, line_terminator=line_terminator, sep=separator, quoting=quoting)
 
@@ -665,6 +669,9 @@ class FormsiteInterface:
 
         Args:
             `destination_path` (str): A Valid path to an output csv file.
+            
+        Raises:
+            KeyError: If there is no 'id' or 'Reference #' column in specified results view.
         """
         if self.Data is None:
             self.FetchResults()
@@ -678,4 +685,4 @@ class FormsiteInterface:
             with open(output_file, 'w') as writer:
                 writer.write(str(latest_ref))
         else:
-            print("No 'Reference #' or 'id' column to write.")
+            raise KeyError("No valid column to extract Reference # from in specified parameters.")
