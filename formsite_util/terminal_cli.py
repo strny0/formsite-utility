@@ -4,20 +4,22 @@ cli.py
 
 CLI interface using argparse for formsite_util.core
 """
-import csv # used in an eval
+import csv
+import os
 import sys
 from time import perf_counter
 import argparse
-
 from requests.models import HTTPError
-# from formsite_util import FormsiteParams, FormsiteInterface, FormsiteCredentials
-# from formsite_util.internal.interfaces import __version__
-try:
-    from .internal.interfaces import FormsiteInterface, FormsiteParams, __version__
-    from .internal.auth import FormsiteCredentials
-except ImportError:
-    from internal.interfaces import FormsiteInterface, FormsiteParams, __version__
-    from internal.auth import FormsiteCredentials
+
+from formsite_util import FormsiteParams, FormsiteInterface
+from formsite_util.internal.auth import FormsiteCredentials
+from formsite_util.internal.interfaces import __version__
+# try:
+#     from .internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+#     from .internal.auth import FormsiteCredentials
+# except ImportError:
+#     from internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+#     from internal.auth import FormsiteCredentials
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
@@ -105,15 +107,16 @@ def gather_args() -> argparse.Namespace:
                           "\nSupported output formats are (.csv|.xlsx|.pkl|.pickle|.json|.parquet|.md|.txt)")
     g_output.add_argument('--raw', action='store_false', default=True,
                           help="Instead of regular headers uses default metadata and items ids")
-    g_output.add_argument('--encoding', type=str, default='utf-8',
+    g_output.add_argument('--encoding', type=str, default='utf-8-sig',
                           help="Specify encoding of the output file (if output format supports it)."
-                          "\nDefaults to 'utf-8'")
+                          "\nMore info on possible values here: https://docs.python.org/3/library/codecs.html#standard-encodings"
+                          "\nDefaults to 'utf-8-sig', UTF-8 with BOM.")
     g_output.add_argument('--separator', type=str, default=',',
                           help="Specify separator of the output file (if output format supports it)."
                           "\nDefaults to ',' (comma)")
-    g_output.add_argument('--line_terminator', type=str, choices={"LF", "CR", "CRLF"}, default="LF",
+    g_output.add_argument('--line_terminator', type=str, choices={"LF", "CR", "CRLF", "os_default"}, default="os_default",
                           help="Specify line terminator of the output file (if output format supports it)"
-                          "\nDefaults to '\\n' (LF) (line feed)")
+                          "\nDefaults to 'os_default'")
     g_output.add_argument('--quoting', type=str, choices={"MINIMAL", "ALL", "NONNUMERIC", "NONE"}, default="MINIMAL",
                           help="Specify quoting level of the output file (if output format supports it)."
                           "\nDefaults to 'MINIMAL'"
@@ -210,8 +213,8 @@ def main():
 
     if arguments.output_file is not False:
         if interface.Data is None:
-            interface.FetchResults(column_ids_as_labels=arguments.raw)
-        line_term = {"LF":"\n", "CR":"\r", "CRLF":"\r\n"}
+            interface.FetchResults(use_resultslabels=arguments.raw)
+        line_term = {"LF":"\n", "CR":"\r", "CRLF":"\r\n", "os_default":os.linesep}
         if arguments.output_file == 'default':
             default_filename = f'./export_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.csv'
         else:
@@ -223,23 +226,25 @@ def main():
                                separator=arguments.separator,
                                line_terminator=line_term.get(arguments.line_terminator),
                                quoting=getattr(csv, f'QUOTE_{arguments.quoting}'))
-        print("\nexport complete")
+        
+        print(f"\nexport complete: '{default_filename}'")
 
     if arguments.extract_links is not False:
         if interface.Data is None:
-            interface.FetchResults(column_ids_as_labels=arguments.raw)
+            interface.FetchResults(use_resultslabels=False)
+            
         if arguments.extract_links == 'default':
             default_filename = f'./links_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.txt'
-            interface.WriteLinks(
-                default_filename, links_regex=arguments.links_regex)
         else:
-            interface.WriteLinks(arguments.extract_links,
-                                 links_regex=arguments.links_regex)
-        print("links extracted")
+            default_filename = arguments.extract_links
+            
+        interface.WriteLinks(default_filename, links_regex=arguments.links_regex)
+
+        print(f"\nlinks extracted: '{default_filename}'")
 
     if arguments.download_links is not False:
         if interface.Data is None:
-            interface.FetchResults(column_ids_as_labels=arguments.raw)
+            interface.FetchResults(use_resultslabels=False)
         if arguments.download_links == 'default':
             default_folder = f'./download_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}'
         else:
@@ -254,18 +259,20 @@ def main():
                                 timeout=arguments.timeout,
                                 retries=arguments.retries,
                                 strip_prefix=arguments.stripprefix)
-        print("\ndownload complete")
+        
+        print(f"\ndownload complete: '{default_folder}'")
 
     if arguments.store_latest_ref is not False:
         if interface.Data is None:
-            interface.FetchResults(column_ids_as_labels=arguments.raw)
+            interface.FetchResults(use_resultslabels=False)
         if arguments.store_latest_ref == 'default':
             default_filename = './latest_ref.txt'
         else:
             default_filename = arguments.store_latest_ref
 
         interface.WriteLatestRef(default_filename)
-        print("\nlatest reference saved")
+        
+        print(f"\nmaxref saved: '{default_filename}'")
 
     print(f'\ndone in {(perf_counter() - t_0):0.2f} seconds!')
     return 0
