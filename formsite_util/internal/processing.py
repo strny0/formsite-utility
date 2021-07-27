@@ -40,7 +40,7 @@ class _FormsiteProcessing:
         self.column_map = self._generate_columns()
         self.metadata_map = self._generate_metadata()
 
-    def _generate_columns(self) -> Dict[int,str]:
+    def _generate_columns(self) -> Dict[str,str]:
         """Creates a dict that maps column id to column label from items_json
 
         Returns:
@@ -49,7 +49,7 @@ class _FormsiteProcessing:
         column_map = dict()
         try:
             for item in self.items['items']:
-                column_map[int(item['id'])] = item['label']
+                column_map[str(item['id'])] = item['label']
         except TypeError:
             pass
         return column_map
@@ -87,7 +87,7 @@ class _FormsiteProcessing:
         cols = []
         row = []
         for t in items:
-            cols.append(int(t['id']))
+            cols.append(str(t['id']))
             if t.get('values') is not None:
                 values = []
                 for val in t['values']:

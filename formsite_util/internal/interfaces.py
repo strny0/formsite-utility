@@ -24,7 +24,7 @@ from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 from .auth import FormsiteCredentials
 from tqdm import tqdm
-__version__ = '1.3.13'
+__version__ = '1.3.14'
 __author__ = 'jakub.strnad@protonmail.com'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
