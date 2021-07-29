@@ -88,10 +88,11 @@ class _FormsiteAPI:
         if self.total_pages > 1:
             for page in range(2, self.total_pages+1):
                 try:
-                    results.append(self.fetch_results(self.params_dict, page))
                     if isinstance(self.params.last, int):
-                        if (page * 500) >= self.params.last:
+                        if (page * self.params_dict['limit']) >= self.params.last:
+                            self.pbar.total = page
                             break
+                    results.append(self.fetch_results(self.params_dict, page))
                 except Exception as err:
                     print('\r\n')
                     print(err)
@@ -141,7 +142,7 @@ class _FormsiteAPI:
                 else:
                     err_message = f"[HTTP ERROR {response.status_code}] {response.text} for url '{response.url}'"
                     raise HTTPError(err_message)
-            if self.check_pages:
+            if self.check_pages and page is not None:
                 self.total_pages = int(response.headers['Pagination-Page-Last'])
                 self.check_pages = False
                 try:
