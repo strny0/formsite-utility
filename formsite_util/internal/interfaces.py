@@ -24,7 +24,7 @@ from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 from .auth import FormsiteCredentials
 from tqdm import tqdm
-__version__ = '1.3.14'
+__version__ = '1.3.15'
 __author__ = 'jakub.strnad@protonmail.com'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
@@ -372,7 +372,7 @@ class FormsiteInterface:
         Raises:
             HTTPError: When received HTTP response code other than 200 or 429.
         """
-        assert len(self.form_id) > 0, f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
+        assert bool(self.form_id), f"You must pass form id when instantiating FormsiteCredentials('form_id', login, params=...) you passed '{self.form_id}'"
         if use_resultslabels:
             self.items, self.results = self.fetch_raw(get_items=True, get_results=True)
         else:
@@ -506,7 +506,7 @@ class FormsiteInterface:
             forms_df.sort_values(by=[sort_by], inplace=True, ascending=False)
             forms_df.set_index('name',inplace=True)
             output_file = _validate_path(str(save2csv))
-            forms_df.to_csv(output_file, encoding='utf-8')
+            forms_df.to_csv(output_file, encoding='utf-8-sig')
             
         return forms_df
 
