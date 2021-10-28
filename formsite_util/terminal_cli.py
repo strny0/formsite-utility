@@ -10,16 +10,12 @@ import sys
 from time import perf_counter
 import argparse
 from requests.models import HTTPError
-
-from formsite_util import FormsiteParams, FormsiteInterface
-from formsite_util.internal.auth import FormsiteCredentials
-from formsite_util.internal.interfaces import __version__
-# try:
-#     from .internal.interfaces import FormsiteInterface, FormsiteParams, __version__
-#     from .internal.auth import FormsiteCredentials
-# except ImportError:
-#     from internal.interfaces import FormsiteInterface, FormsiteParams, __version__
-#     from internal.auth import FormsiteCredentials
+try:
+    from .internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+    from .internal.auth import FormsiteCredentials
+except ImportError:
+    from internal.interfaces import FormsiteInterface, FormsiteParams, __version__
+    from internal.auth import FormsiteCredentials
 
 def gather_args() -> argparse.Namespace:
     """Gathers supported cli inputs."""
@@ -226,18 +222,18 @@ def main():
                                separator=arguments.separator,
                                line_terminator=line_term.get(arguments.line_terminator),
                                quoting=getattr(csv, f'QUOTE_{arguments.quoting}'))
-        
+
         print(f"\nexport complete: '{default_filename}'")
 
     if arguments.extract_links is not False:
         if interface.Data is None:
             interface.FetchResults(use_resultslabels=False)
-            
+
         if arguments.extract_links == 'default':
             default_filename = f'./links_{interface.form_id}_{interface.params.local_datetime.strftime("%Y-%m-%d--%H-%M-%S")}.txt'
         else:
             default_filename = arguments.extract_links
-            
+
         interface.WriteLinks(default_filename, links_regex=arguments.links_regex)
 
         print(f"\nlinks extracted: '{default_filename}'")
@@ -259,7 +255,7 @@ def main():
                                 timeout=arguments.timeout,
                                 retries=arguments.retries,
                                 strip_prefix=arguments.stripprefix)
-        
+
         print(f"\ndownload complete: '{default_folder}'")
 
     if arguments.store_latest_ref is not False:
@@ -271,7 +267,7 @@ def main():
             default_filename = arguments.store_latest_ref
 
         interface.WriteLatestRef(default_filename)
-        
+
         print(f"\nmaxref saved: '{default_filename}'")
 
     print(f'\ndone in {(perf_counter() - t_0):0.2f} seconds!')

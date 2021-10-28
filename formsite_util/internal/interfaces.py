@@ -24,7 +24,7 @@ from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 from .auth import FormsiteCredentials
 from tqdm import tqdm
-__version__ = '1.3.15'
+__version__ = '1.3.17'
 __author__ = 'jakub.strnad@protonmail.com'
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
@@ -32,39 +32,36 @@ def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
     The offset is additive, date + timezone_offset.
 
     Args:
-        date (Union[str, dt]): String in formats: 'yyyy-mm-dd', 'yyyy-mm-dd HH:MM:SS' or 'yyyy-mm-ddTHH:MM:SSZ' or datetime. 
+        date (Union[str, dt]): String in formats: 'yyyy-mm-dd', 'yyyy-mm-dd HH:MM:SS' or 'yyyy-mm-ddTHH:MM:SSZ' or datetime.
         timezone_offset (td): A timedelta value representing addition to 'date'.
+
+    Notes:
+        If you input time in ISO 8601 UTC, timezone offset won't be applied.
 
     Raises:
         ValueError: Raised if string format is not recognized.
 
     Returns:
         str: A datetime string in 'yyyy-mm-ddTHH:MM:SSZ' format, shifted by timezone_offset amount.
-    """    
+    """
     if isinstance(date, dt):
         date = date + timezone_offset
     else:
-        try:
+        formats = ["%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"]
+        for f in formats:
             try:
-                date = dt.strptime(str(date), "%Y-%m-%dT%H:%M:%SZ")
+                date = dt.strptime(date, f)
                 date = date + timezone_offset
-            except:
-                try:
-                    date = dt.strptime(str(date), "%Y-%m-%d")
-                    date = date + timezone_offset
-                except:
-                    try:
-                        date = dt.strptime(str(date), "%Y-%m-%d %H:%M:%S")
-                        date = date + timezone_offset
-                    except:
-                        raise
-        except:
+                break
+            except ValueError:
+                continue
+        if not isinstance(date, dt):
             raise ValueError("""invalid date format input for afterdate/beforedate, please use a datetime object or string in ISO 8601, yyyy-mm-dd or yyyy-mm-dd HH:MM:SS format""")
 
     return dt.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
 
 def _extract_timezone_from_str(timezone: str, timezone_re: str) -> td:
-    """Parses input timezone: str -> timedelta
+    """Parses input timezone.
 
     Args:
         timezone (str): string in format ['+0200', '02:00', +02:00', '16:48', '-05:00', '-0600']
@@ -85,8 +82,8 @@ def _extract_timezone_from_str(timezone: str, timezone_re: str) -> td:
         tz_offset = td(hours=int(tz_tuple[0]), seconds=int(tz_tuple[1])/60)
     return tz_offset
 
-def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
-    """Calculates timezone offset relative to input TARGET timezone string and LOCAL timezone.
+def _calculate_tz_offset(timezone: str) -> Tuple[td, td, dt]:
+    """Calculates timezone offset relative to input TARGET timezone string UTC.
 
     Args:
         timezone (str): String in format Ex. 'America/Chicago' (tz_database_name) or offset like '0400', '+0400', '-7:00', '-14:00'
@@ -95,31 +92,36 @@ def _calculate_tz_offset(timezone: str) -> Tuple[td, dt]:
         UnknownTimeZoneError: If input is not a valid tz_databse name or offset.
 
     Returns:
-        Tuple[timedelta, datetime]: tuple of offset_from_local time as a timedelta and local_time (datetime)
-    """    
+        Tuple[timedelta, timedelta, datetime]: tuple of offset_from_local time as a timedelta, offset from utc and local_time (datetime)
+    """
     local_date = dt.now()
     utc_date = dt.utcnow()
-    utc_offset = local_date - utc_date
+    diff_local_utc = local_date - utc_date
+    offset_utc = local_date - utc_date
     if timezone == 'local':
-        offset_from_local = td(seconds=0)
+        offset_local = td(seconds=0)
     else:
-        tz_input_reges = r'(\+|\-|)([0-1]\d[0-5]\d|[0-1]\d\:[0-5]\d|\d\:[0-5]\d)'
-        # (\+|\-|)         : '+' or '-' or ''
-        # [0-1]\d[0-5]\d   : '0000'
-        # [0-1]\d\:[0-5]\d : '00:00'
-        # \d\:[0-5]\d      : '0:00'
-        offset_from_local = _extract_timezone_from_str(timezone, tz_input_reges)
-        if offset_from_local is None:
+        tz_input_regex = r'(\+|\-|)([0-1]\d[0-5]\d|[0-1]\d\:[0-5]\d|\d\:[0-5]\d)'
+        # parses the following formats:
+        # America/Chicago
+        # +1200
+        # 1300
+        # -1200
+        # 8:00
+        # -8:00
+        offset_local = _extract_timezone_from_str(timezone, tz_input_regex)
+
+        if offset_local is None:
             if re.search(r'\w+/\w+', timezone) is not None:
-                inp = pytztimezone(timezone).localize(local_date).strftime("%z")
-                t = (len(inp) - 2)
-                l_inp = (inp[:t], inp[-2:])
-                inp_td = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60).total_seconds()
-                offset_from_local = td(seconds=(inp_td - utc_offset.total_seconds()))
+                off_local = pytztimezone(timezone).localize(local_date).strftime("%z")
+                t = (len(off_local) - 2)
+                l_inp = (off_local[:t], off_local[-2:])
+                offset_utc = td(hours=int(l_inp[0]), seconds=int(l_inp[1])/60)
+                offset_local = offset_utc - diff_local_utc
             else:
                 raise UnknownTimeZoneError(timezone)
 
-    return offset_from_local, local_date
+    return offset_local, offset_utc, local_date
 
 def _validate_path(path: str) -> str:
     """Converts input path into POSIX format. Creates parent directories if necessary.
@@ -166,7 +168,7 @@ class FormsiteParams:
     def __post_init__(self):
         """Calls `_calculate_tz_offset` internal function."""
         self.timezone = 'local' if self.timezone is None else self.timezone
-        self.timezone_offset, self.local_datetime = _calculate_tz_offset(self.timezone)
+        self.timezone_offset, self.timezone_offset_utc, self.local_datetime = _calculate_tz_offset(self.timezone)
         self.filters = dict()
 
     def get_params_as_dict(self, single_page_limit: int = 500) -> dict:
@@ -196,10 +198,10 @@ class FormsiteParams:
 
         results_params.update(self.filters)
         return results_params
-    
+
     def add_filter(self, search_type: str, col: Union[int, str], search_value: Any) -> None:
         """Get results where item with ID x matches search_type value.
-        
+
         You can edit `self.filters` directly to remove/change filters.
 
         Args:
@@ -222,10 +224,10 @@ class FormsiteParams:
                 self.filters.update({f"search_ends[{col}]": search_value})
         else:
             raise Exception(f'Invalid search type entered. Must be one of {valid_types}.')
-    
+
     def set_filter_method(self, method: str):
         """How to combine multiple search criteria.
-        
+
         If you don't run this method, defaults to 'and'.
 
         Args:
@@ -264,7 +266,7 @@ class FormsiteInterface:
         auth (FormsiteCredentials): Instance of the FormsiteCredentials class.
         params (FormsiteParams): Instance of the FormsiteParams class.
         display_progress (bool): Display tqdm progressbars. Defaults to True.
-    
+
     Internal variables:
         `Data` (DataFrame | None): Stores results as dataframe.
         `Links` (Set[str] | None): Stores all formsite upload links in a set.
@@ -272,7 +274,7 @@ class FormsiteInterface:
         `results` (List[Dict[str,str]] | list): RAW list of results jsons.
         `url_forms` (str): url for fetching info about all forms.
         `url_files` (str): url for downloading files.
-                
+
     Methods of interest (and return types):
         `FetchResults` (None): stores results in self.Data of the instance of this class.
         `ReturnResults` (DataFrame): returns self.Results, if it's None, calls FetchResults first.
@@ -295,7 +297,7 @@ class FormsiteInterface:
 
     def __post_init__(self):
         """Initializes internal variables.
-        
+
         Internal variables:
             `Data` (DataFrame | None): Stores results as dataframe.
             `Links` (Set[str] | None): Stores all formsite upload links in a set.
@@ -335,10 +337,10 @@ class FormsiteInterface:
         api_handler = _FormsiteAPI(form_id=self.form_id,
                                    params=self.params,
                                    auth=self.auth,
-                                   display_progress=self.display_progress, 
+                                   display_progress=self.display_progress,
                                    short_delay=short_delay,
                                    long_delay=long_delay)
-        
+
         return api_handler.Start(get_items=get_items, get_results=get_results)
 
     def make_dataframe(self, items: dict, results: List[dict], use_resultslabels: bool = False) -> pd.DataFrame:
@@ -355,7 +357,7 @@ class FormsiteInterface:
         sort_asc = self.params.sort != 'desc'
         processing_handler = _FormsiteProcessing(items=items,
                                                  results=results,
-                                                 timezone_offset=self.params.timezone_offset,
+                                                 timezone_offset=self.params.timezone_offset_utc,
                                                  sort_asc=sort_asc,
                                                  use_resultslabels=use_resultslabels,
                                                  display_progress=self.display_progress,
@@ -368,7 +370,7 @@ class FormsiteInterface:
 
         Args:
             use_resultslabels (bool, optional): True: Use question labels or resultslabels if available. False: Use column IDs and metadata names. Defaults to True.
-        
+
         Raises:
             HTTPError: When received HTTP response code other than 200 or 429.
         """
@@ -377,7 +379,7 @@ class FormsiteInterface:
             self.items, self.results = self.fetch_raw(get_items=True, get_results=True)
         else:
             self.items, self.results = self.fetch_raw(get_items=False, get_results=True)
-            
+
         self.Data = self.make_dataframe(self.items, self.results, use_resultslabels=use_resultslabels)
 
     def ReturnResults(self, column_ids_as_labels: bool = False) -> pd.DataFrame:
@@ -433,10 +435,10 @@ class FormsiteInterface:
             pbar = tqdm(desc='Extracting download links', leave=False, unit=' cells')
         else:
             pbar = None
-            
-        _ = self.Data.applymap(lambda x: self._xtract(x, 
-                                                      pattern=url_pattern, 
-                                                      links_set=self.Links, 
+
+        _ = self.Data.applymap(lambda x: self._xtract(x,
+                                                      pattern=url_pattern,
+                                                      links_set=self.Links,
                                                       links_filter_pattern=filter_pattern,
                                                       pbar=pbar))
         try:
@@ -484,9 +486,9 @@ class FormsiteInterface:
             sort_by (str, optional): One of {'name', 'form_id', 'resultsCount', 'filesSize'}. Defaults to 'name'.
             display (bool, optional): Print to stdout. Defaults to False.
             save2csv (Union[str, bool], optional): Path to output csv file. Defaults to False.
-        
+
         Returns:
-            pd.DataFrame: Dataframe with all relevant forms data.    
+            pd.DataFrame: Dataframe with all relevant forms data.
         """
         forms_df = self._list_all_forms()
         if display:
@@ -507,7 +509,7 @@ class FormsiteInterface:
             forms_df.set_index('name',inplace=True)
             output_file = _validate_path(str(save2csv))
             forms_df.to_csv(output_file, encoding='utf-8-sig')
-            
+
         return forms_df
 
     def ReturnLinks(self, links_regex: str = r'.+') -> Set[str]:
@@ -562,7 +564,7 @@ class FormsiteInterface:
             `timeout` (float, optional): In seconds, specify how long to wait for connection/download. Defaults to 80.
             `retries` (int, optional): In case of failed download or a timeout error, how many times to retry download. Defaults to 1.
             `strip_prefix` (bool, optional): If True, strips f-xxx-xxx prefix. Defaults to False.
-        
+
         Raises:
             AssertationError: if len(self.Links) < 1, ie. there is nothing to download.
         """
@@ -669,7 +671,7 @@ class FormsiteInterface:
 
         Args:
             `destination_path` (str): A Valid path to an output csv file.
-            
+
         Raises:
             KeyError: If there is no 'id' or 'Reference #' column in specified results view.
         """

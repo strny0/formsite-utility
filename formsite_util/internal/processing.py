@@ -14,7 +14,7 @@ import pandas as pd
 class _FormsiteProcessing:
 
     """Handles processing of results from API jsons. Invoked with `self.Process()`
-    
+
     Args:
         `items` (dict): json of the items API response.
         `results` (List[dict]): list of jsons of the results API response.
@@ -69,11 +69,12 @@ class _FormsiteProcessing:
                 'user_browser': 'Browser',
                 'user_device': 'Device',
                 'user_referrer': 'Referrer',
-                'user_os': "",
+                'user_os': "OS",
                 'payment_status': 'Payment Status',
                 'payment_amount': 'Payment Amount Paid',
                 'login_username': 'Login Username',
-                'login_email': 'Login Email'}
+                'login_email': 'Login Email',
+                'score': 'Score',}
 
     def _process_items_row(self, items: dict) -> pd.Series:
         """Converts a single 'items' record to a pandas Series
@@ -135,17 +136,13 @@ class _FormsiteProcessing:
         Returns:
             pd.DataFrame: Ordered DataFrame
         """
-        # order:
-        # Reference #, Status
-        # items
-        # Date,Start Time,Finish Time,Duration (s),User,Browser,Device,Referrer
         left_side = []
         right_side = []
         if 'id' in df.columns:
             left_side.append('id')
         if 'result_status' in df.columns:
             left_side.append('result_status')
-        
+
         if len(self.column_map.keys()) > 0:
             middle = [col if (col in df.columns) and (col not in self.metadata_map.keys()) else None for col in list(self.column_map.keys())]
         else:
@@ -153,7 +150,7 @@ class _FormsiteProcessing:
             for col in list(df.columns):
                 if col not in list(self.metadata_map.keys()):
                     middle.append(col)
-            
+
         while None in middle:
             middle.remove(None)
         if 'payment_status' in df.columns:
@@ -164,6 +161,8 @@ class _FormsiteProcessing:
             right_side.append('login_username')
         if 'login_email' in df.columns:
             right_side.append('login_email')
+        if 'score' in df.columns:
+            right_side.append('score')
         if 'date_update' in df.columns:
             right_side.append('date_update')
         if 'date_start' in df.columns:
@@ -180,6 +179,7 @@ class _FormsiteProcessing:
             right_side.append('user_device')
         if 'user_referrer' in df.columns:
             right_side.append('user_referrer')
+
         final = left_side+middle+right_side
         return df[final]
 
@@ -202,6 +202,8 @@ class _FormsiteProcessing:
             df['payment_amount'] = df['payment_amount'].astype(str)
         if 'login_username' in df.columns:
             df['login_username'] = df['login_username'].astype(str)
+        if 'score' in df.columns:
+            df['score'] = df['score'].astype(int)
         if 'login_email' in df.columns:
             df['login_email'] = df['login_email'].astype(str)
         if 'date_update' in df.columns:

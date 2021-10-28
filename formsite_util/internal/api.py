@@ -15,11 +15,11 @@ from .auth import FormsiteCredentials
 @dataclass
 class _FormsiteAPI:
     """Handles retreival of results from your formsite form. Invoked with `self.Start()` method.
-    
+
     Keywords:
         Results: Data from your formsite form (the rows).
         Items:   Labels of user-defined columns in your formsite form (the header row).
-    
+
     Args:
         form_id (str): ID of form to fetch.
         params (FormsiteParams): An instance of FormsiteParams class.
@@ -63,7 +63,7 @@ class _FormsiteAPI:
         """Performs all API calls to formsite servers asynchronously"""
         items, results = (None, [])
         with requests.session() as self.session:
-            self.session.headers.update(self.auth.get_auth_header())          
+            self.session.headers.update(self.auth.get_auth_header())
             results = self.get_results() if get_results else []
             items = self.fetch_items() if get_items else None
             self._update_pbar_progress()
@@ -73,13 +73,13 @@ class _FormsiteAPI:
             except AttributeError:
                 pass
         return items, results
-    
+
     def get_results(self) -> List[dict]:
         """Fetches all results that match input parameters from a form.
-        
+
         Raises:
-            Exception: 
-            HTTPError: 
+            Exception:
+            HTTPError:
 
         Returns:
             List[dict]: List of pages of results.
@@ -113,14 +113,14 @@ class _FormsiteAPI:
                         print('This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.')
                         raise err
         return results
-                
+
     def fetch_results(self, params: dict, page: int) -> dict:
         """Handles fetching and writing (if selected) of results json."""
         self._update_pbar_desc(desc=f"Fetching rows ({(page-1)*500}-{page*500})")
         return self.fetch_content(self.results_url, params, page=page)
 
     def fetch_content(self, url: str, params: dict, page: int = None) -> dict:
-        """Base method for interacting with the formsite api with aiohttp GET request. Returns content of the response."""  
+        """Base method for interacting with the formsite api with aiohttp GET request. Returns content of the response."""
         if page is not None:
             params['page'] = page
             if page > 3:
@@ -148,6 +148,7 @@ class _FormsiteAPI:
                 try:
                     self.pbar.total = self.total_pages
                 except AttributeError as ex:
+                    #print(ex)
                     pass
         self._update_pbar_progress()
         return content

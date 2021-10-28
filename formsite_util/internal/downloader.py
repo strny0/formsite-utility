@@ -111,7 +111,7 @@ class DownloadWorkerState:
 
     def write_failed(self, target: str = './failed_downloads.txt'):
         """Writes contents of `self.failed_urls` to a file."""
-        with open(target, 'a') as writer:
+        with open(target, 'a', encoding='utf-8') as writer:
             to_write = self.get_failed_url_diff()
             for i in to_write:
                 writer.write(f"{i}\n")
@@ -120,7 +120,7 @@ class DownloadWorkerState:
 
     def write_all(self, target: str = './downloads_status.txt'):
         """Writes contents of `self.complete_urls` to a file."""
-        with open(target, 'w') as writer:
+        with open(target, 'w', encoding='utf-8') as writer:
             for i in self.complete_urls:
                 writer.write(f"{i}\n")
 

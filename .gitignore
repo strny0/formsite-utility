@@ -1,0 +1,8 @@
+.vscode/
+build/
+dist/
+example_results/
+formsite_util.egg-info/
+.pylintrc
+build_wheel.md
+*.csv
