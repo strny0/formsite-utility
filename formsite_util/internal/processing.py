@@ -193,7 +193,7 @@ class _FormsiteProcessing:
             pd.DataFrame: DataFrame with set dtypes
         """
         if 'id' in df.columns:
-            df['id'] = df['id'].astype(int)
+            df['id'] = df['id'].astype(int, errors='ignore')
         if 'result_status' in df.columns:
             df['result_status'] = df['result_status'].astype(str)
         if 'payment_status' in df.columns:
@@ -203,7 +203,7 @@ class _FormsiteProcessing:
         if 'login_username' in df.columns:
             df['login_username'] = df['login_username'].astype(str)
         if 'score' in df.columns:
-            df['score'] = df['score'].astype(int)
+            df['score'] = df['score'].astype(int, errors='ignore')
         if 'login_email' in df.columns:
             df['login_email'] = df['login_email'].astype(str)
         if 'date_update' in df.columns:
