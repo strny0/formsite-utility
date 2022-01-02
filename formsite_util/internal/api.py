@@ -10,7 +10,9 @@ import time
 import requests
 from requests.exceptions import HTTPError
 from tqdm import tqdm
+
 from .auth import FormsiteCredentials
+
 
 @dataclass
 class _FormsiteAPI:
@@ -35,26 +37,22 @@ class _FormsiteAPI:
     Returns:
         _FormsiteAPI: Instance of the _FormsiteAPI class. Start requests in `.Start()` method.
     """
+
     form_id: str
     params: Any
     auth: FormsiteCredentials
-    display_progress:bool = True
+    display_progress: bool = True
     short_delay: float = 5.0
     long_delay: float = 15.0
 
     def __post_init__(self):
         """Generates post_init internal variables."""
-        self.url_base: str = f'https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}'
-        self.results_url: str = f'{self.url_base}/forms/{self.form_id}/results'
-        self.items_url: str = f'{self.url_base}/forms/{self.form_id}/items'
+        self.url_base: str = f"https://{self.auth.server}.formsite.com/api/v2/{self.auth.directory}"
+        self.results_url: str = f"{self.url_base}/forms/{self.form_id}/results"
+        self.items_url: str = f"{self.url_base}/forms/{self.form_id}/items"
         self.total_pages: int = 1
         self.check_pages: bool = True
-        self.pbar = tqdm(desc='Starting API requests',
-                         total=2,
-                         unit='call',
-                         leave=False,
-                         dynamic_ncols=True,
-                         ncols=80) if self.display_progress else None
+        self.pbar = tqdm(desc="Starting API requests", total=2, unit="call", leave=False, dynamic_ncols=True, ncols=80) if self.display_progress else None
         self.session = None
         self.params_dict = self.params.get_params_as_dict()
         self.items_dict = self.params.get_items_as_dict()
@@ -78,39 +76,38 @@ class _FormsiteAPI:
         """Fetches all results that match input parameters from a form.
 
         Raises:
-            Exception:
-            HTTPError:
+            HTTPError
 
         Returns:
             List[dict]: List of pages of results.
         """
         results = [self.fetch_results(self.params_dict, 1)]
         if self.total_pages > 1:
-            for page in range(2, self.total_pages+1):
+            for page in range(2, self.total_pages + 1):
                 try:
                     if isinstance(self.params.last, int):
-                        if (page * self.params_dict['limit']) >= self.params.last:
-                            self.pbar.total = page
+                        if (page * self.params_dict["limit"]) >= self.params.last:
+                            self._update_pbar_total(page)
                             break
                     results.append(self.fetch_results(self.params_dict, page))
                 except Exception as err:
-                    print('\r\n')
+                    print("\r\n")
                     print(err)
                     try:
-                        del self.params_dict['after_id']
+                        del self.params_dict["after_id"]
                     except KeyError:
                         pass
                     try:
-                        self.params_dict['before_id'] = int(results[-1]['results'][-1]['id'])
+                        self.params_dict["before_id"] = int(results[-1]["results"][-1]["id"])
                         print(f"Retrying and resuming from {int(results[-1]['results'][-1]['id'])}")
-                        self.long_delay *= 2 # double
+                        self.long_delay *= 2  # double
                         results += self.get_results()
                         break
                     except KeyError:
-                        print('Selected results view does not have \'Reference #\' column. Unable to resume download.')
-                        raise Exception('This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.')
+                        print("Selected results view does not have 'Reference #' column. Unable to resume download.")
+                        raise Exception("This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.")
                     except Exception as err:
-                        print('This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.')
+                        print("This download is too intense for Formsite servers at the moment. Try using a results view or parameters to only get the results you need.")
                         raise err
         return results
 
@@ -122,10 +119,10 @@ class _FormsiteAPI:
     def fetch_content(self, url: str, params: dict, page: int = None) -> dict:
         """Base method for interacting with the formsite api with aiohttp GET request. Returns content of the response."""
         if page is not None:
-            params['page'] = page
+            params["page"] = page
             if page > 3:
                 self._update_pbar_desc(desc=f"Delay [{self.long_delay:0.0f} s] ({(page-1)*500}-{page*500})")
-                _ = time.sleep(max(self.long_delay-self.short_delay, 0))
+                _ = time.sleep(max(self.long_delay - self.short_delay, 0))
             else:
                 self._update_pbar_desc(desc=f"Delay [{self.short_delay:0.0f} s] ({(page-1)*500}-{page*500})")
         time.sleep(self.short_delay)
@@ -141,14 +138,14 @@ class _FormsiteAPI:
                     content = self.fetch_content(url, params, page=page)
                 else:
                     err_message = f"[HTTP ERROR {response.status_code}] {response.text} for url '{response.url}'"
-                    raise HTTPError(err_message)
+                    raise HTTPError(response, err_message)
             if self.check_pages and page is not None:
-                self.total_pages = int(response.headers['Pagination-Page-Last'])
+                self.total_pages = int(response.headers["Pagination-Page-Last"])
                 self.check_pages = False
                 try:
-                    self.pbar.total = self.total_pages
+                    self._update_pbar_total(self.total_pages)
                 except AttributeError as ex:
-                    #print(ex)
+                    # print(ex)
                     pass
         self._update_pbar_progress()
         return content
@@ -157,6 +154,10 @@ class _FormsiteAPI:
         """Handles fetching and writing (if selected) of items json."""
         self._update_pbar_desc(desc="Fetching headers")
         return self.fetch_content(self.items_url, self.items_dict)
+
+    def _update_pbar_total(self, n: int) -> None:
+        if isinstance(self.pbar, tqdm):
+            self.pbar.total = n
 
     def _update_pbar_progress(self) -> None:
         if isinstance(self.pbar, tqdm):
