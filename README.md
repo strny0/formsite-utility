@@ -401,5 +401,5 @@ You can find API related information of your specific form under:
 
 © 2021 Jakub Strnad
 
-This program is licensed under GPLv3
+MIT License
 Please see LICENSE.<span></span>md for more details.
