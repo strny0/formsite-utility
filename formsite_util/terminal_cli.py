@@ -40,7 +40,7 @@ def gather_args() -> argparse.Namespace:
         "| 5xx  | Unexpected internal error.                  |\n\n"
         "formsite-util  Copyright (C) 2021  Jakub Strnad\n"
         "This program comes with ABSOLUTELY NO WARRANTY; for details see LICENSE.md\n"
-        "This is free software, and you are welcome to redistribute it under certain conditions.",
+        "This is free software, and you are welcome to redistribute it.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}\n")
