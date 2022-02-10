@@ -14,7 +14,7 @@ FormsiteForm: Represents the form data and session
 
 FormsiteFormsList: Represents the list of all forms for the specified account
 
-FormCache: 
+FormCache: Store formsite forms in a folder
 
 ## Low level interfaces
 
