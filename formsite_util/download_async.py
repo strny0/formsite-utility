@@ -5,6 +5,7 @@ this module contains the functionality for downloading downloading
 many urls concurrently with a worker based queue+semaphore asyncio approach
 """
 from __future__ import annotations
+from logging import Logger
 import os
 from collections import namedtuple
 import asyncio
@@ -18,6 +19,8 @@ from aiohttp import (
     ClientResponseError,
     InvalidURL,
 )
+
+from formsite_util.logger import FormsiteLogger
 
 DownloadItem = namedtuple("DownloadItem", ["url", "path", "attempt"])
 
@@ -54,6 +57,7 @@ class AsyncFormDownloader:
         self.workers = workers
         self.timeout = timeout
         self.max_attempts = max_attempts
+        self.logger: FormsiteLogger = FormsiteLogger()
         # ----
         self.semaphore = asyncio.Semaphore(self.workers)
         self.dl_queue = asyncio.Queue()
@@ -100,6 +104,7 @@ class DownloadWorkerState:
         self.url_path_list = url_path_list
         self.num_workers = num_workers
         self.callback = callback
+        self.logger: FormsiteLogger = FormsiteLogger()
         # ----
         self.total: int = len(self.url_path_list)
         self.enqueued: int = len(self.url_path_list)
@@ -177,6 +182,7 @@ class DownloadWorker:
         self.internal_state = internal_state
         self.timeout = timeout
         self.max_attempts = max_attempts
+        self.logger: FormsiteLogger = FormsiteLogger()
         # ----
         self.callback = internal_state.callback
         self.client_timeout = ClientTimeout(total=timeout)

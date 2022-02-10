@@ -7,22 +7,25 @@ cache.py
 import os
 from pathlib import Path
 from typing import List, Union
-import pandas as pd
 import json
 from datetime import datetime as dt
+import pandas as pd
 
 # ----
 from formsite_util.form_error import FormsiteUncachableParametersException
 from formsite_util.form import FormsiteForm
 from formsite_util.form_data import FormData
-
-VALID_FORMATS = ["feather", "hdf", "parquet", "pickle", "json", "csv"]
+from formsite_util.logger import FormsiteLogger
 
 
 class FormCache:
     """Store and perpetually update data in a particular location"""
 
-    def __init__(self, cache_dir: str, serialization_format: str = "feather") -> None:
+    def __init__(
+        self,
+        cache_dir: str,
+        serialization_format: str = "feather",
+    ) -> None:
         """FormCache constructor
 
         Args:
@@ -39,9 +42,12 @@ class FormCache:
 
         (csv format is not recommended)
         """
+        _VALID_FORMATS = ["feather", "hdf", "parquet", "pickle", "json", "csv"]
+
         assert (
-            serialization_format in VALID_FORMATS
+            serialization_format in _VALID_FORMATS
         ), f"Invalid serialization format: {serialization_format}"
+        self.logger: FormsiteLogger = FormsiteLogger()
         self.cache_dir = Path(cache_dir).resolve().as_posix()
         self.s_format = serialization_format
         os.makedirs(self.cache_dir, exist_ok=True)

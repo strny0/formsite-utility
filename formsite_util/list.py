@@ -7,6 +7,7 @@ list.py
 from __future__ import annotations
 import pandas as pd
 from pathlib import Path
+from formsite_util.logger import FormsiteLogger
 from formsite_util.session import FormsiteSession
 
 
@@ -51,7 +52,7 @@ class FormsiteFormsList:
             and directory is not None
         ):
             self.session = FormsiteSession(token, server, directory)
-
+        self.logger: FormsiteLogger = FormsiteLogger()
         self.forms_url = f"{self.session.url_base}/forms"
 
     @classmethod

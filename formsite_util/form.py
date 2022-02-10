@@ -16,6 +16,7 @@ from requests import Session
 
 # ----
 from formsite_util.form_error import FormsiteNoResultsException
+from formsite_util.logger import FormsiteLogger
 from formsite_util.parameters import FormsiteParameters
 from formsite_util.session import FormsiteSession
 from formsite_util.fetcher import FormFetcher
@@ -62,6 +63,7 @@ class FormsiteForm(FormData):
         super().__init__()
         self.form_id: str = form_id
         self.session: FormsiteSession = session
+        self.logger: FormsiteLogger = FormsiteLogger()
 
         if (
             session is None
@@ -77,11 +79,7 @@ class FormsiteForm(FormData):
             self._uses_items = data._uses_items
 
     def __repr__(self) -> str:
-        out = f"<FormsiteForm {self.form_id}>"
-        if not self.data.empty:
-            out += "\n"
-            out += repr(self.data)
-        return out
+        return f"<FormsiteForm {self.form_id}>"
 
     @classmethod
     def from_credentials(
@@ -165,17 +163,15 @@ class FormsiteForm(FormData):
         parser = FormParser()
         self.uses_items = False
         if results:
-            for i, (response_json, total) in enumerate(fetcher.fetch_iterator(), start=1):
+            for data in fetcher.fetch_iterator():
                 # --- edge case ---
-                if not response_json.get("results"):
+                if not data.get("results"):
                     raise FormsiteNoResultsException("No results in specified parameters")
                 # --- regular case ---
-                parser.feed(response_json)
+                parser.feed(data)
                 # --- callback ---
                 if isinstance(fetch_callback, Callable):
-                    if params.last is not None:
-                        total = min(ceil(params.last / 500), total)
-                    fetch_callback(i, total, response_json)
+                    fetch_callback(fetcher.cur_page, fetcher.total_pages, data)
                 # --- fetch delay ---
                 sleep(fetch_delay)
 

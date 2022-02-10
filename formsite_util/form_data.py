@@ -20,6 +20,7 @@ class FormData:
         self._uses_items = None
         self._items = None
         self._data = pd.DataFrame()
+        self.logger: FormsiteLogger = FormsiteLogger()
 
     @property
     def data(self) -> pd.DataFrame:

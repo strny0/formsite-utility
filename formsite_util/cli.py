@@ -5,6 +5,7 @@ cli.py
 """
 
 import asyncio
+import logging
 import sys
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ from formsite_util.form import FormsiteForm
 from formsite_util.list import FormsiteFormsList
 from formsite_util.session import FormsiteSession
 from formsite_util.parameters import FormsiteParameters
-
+from formsite_util.logger import FormsiteLogger
 
 __version__ = "2.0.0"
 QUOTE = {
@@ -38,8 +39,16 @@ def main():
     """The main program (CLI)"""
     global FETCH_PBAR
     global DOWNLOAD_PBAR
+    LOG = FormsiteLogger()
     args = get_args()
-    # TODO init logger
+
+    # Initialize logging
+    if args.verbose:
+        LOG.level = logging.DEBUG
+        fh = logging.FileHandler(sys.stdout)
+        LOG.addHandler(fh)
+
+    # Initialize session
     with FormsiteSession(args.token, args.server, args.directory) as session:
         # ----
         if args.list_forms is not None:

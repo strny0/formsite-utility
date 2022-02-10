@@ -7,6 +7,8 @@ session.py
 
 import requests
 
+from formsite_util.logger import FormsiteLogger
+
 
 class FormsiteSession:
     """Formsite API HTTP Session object"""
@@ -43,6 +45,7 @@ class FormsiteSession:
         self._session.headers.update(
             {"Authorization": f"bearer {token}", "Accept": "application/json"}
         )
+        self.logger: FormsiteLogger = FormsiteLogger()
 
     def __enter__(self):
         return self
@@ -56,7 +59,8 @@ class FormsiteSession:
         params: dict = None,
     ) -> requests.Response:
         """Wrapper method for requests.Session.get()"""
-        return self._session.get(url, params=params)
+        with self._session.get(url, params=params) as resp:
+            return resp
 
     def close(self):
         """Close the HTTP session if noone is using it"""

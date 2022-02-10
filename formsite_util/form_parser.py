@@ -8,6 +8,8 @@ from itertools import chain
 import re
 import pandas as pd
 
+from formsite_util.logger import FormsiteLogger
+
 # Columns that appear outside of the "items" object in the response json
 NON_ITEM_COLS = {
     "id": "Reference #",
@@ -69,6 +71,7 @@ class FormParser:
     def __init__(self) -> None:
         self.data = []
         self.children_item_re = re.compile(r"(\d+?-\d+?-\d+?)")
+        self.logger: FormsiteLogger = FormsiteLogger()
 
     def parse_results_items(self, items: dict) -> dict:
         """Parses ['items'] dictionary of the result"""

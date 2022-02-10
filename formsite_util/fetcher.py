@@ -18,6 +18,7 @@ from formsite_util.form_error import (
     FormsiteInvalidParameterException,
     FormsiteRateLimitException,
 )
+from formsite_util.logger import FormsiteLogger
 from formsite_util.parameters import FormsiteParameters
 from formsite_util.session import FormsiteSession
 
@@ -48,31 +49,30 @@ class FormFetcher:
         self.items_params = params.items_params_dict()
         self.results_url = f"{session.url_base}/forms/{self.form_id}/results"
         self.items_url = f"{session.url_base}/forms/{self.form_id}/items"
+        self.total_pages = 1
+        self.cur_page = 1
+        self.logger: FormsiteLogger = FormsiteLogger()
 
     def __repr__(self) -> str:
         return f"<FormFetcher {self.form_id} | {self.session.url_base}>"
 
-    def fetch_iterator(self) -> Generator[Tuple[int, dict], None, None]:
+    def fetch_iterator(self) -> Generator[dict, None, None]:
         """Iterates through all HTTP response pages
 
         Yields:
-            Generator[int, dict]: (total_pages, data_of_page)
+            Generator[dict]: data_of_page
         """
-        page: int = 1
-        page_limit: int = 1
         results_per_page = self.results_params.get("limit", 500)
-        last_limit = self.params.last if self.params.last is not None else sys.maxsize
         while True:
             try:
-                if page > page_limit:
+                if self.cur_page > self.total_pages:
                     return StopIteration
-                if last_limit and page > ceil(last_limit / results_per_page):
-                    return StopIteration
-                response = self.fetch_result(page)
-                self.handle_response(response)
-                page += 1
-                page_limit = int(response.headers.get("Pagination-Page-Last"))
-                yield response.json(), page_limit
+                resp = self.fetch_result(self.cur_page)
+                self.handle_response(resp)
+                self.cur_page += 1
+                self.total_pages = int(resp.headers.get("Pagination-Page-Last"))
+                self.total_pages = min(ceil(results_per_page / 500), self.total_pages)
+                yield resp.json()
 
             except FormsiteRateLimitException:
                 sleep(HTTP_429_WAIT_DELAY)
@@ -86,16 +86,20 @@ class FormFetcher:
 
     def fetch_items(self) -> dict:
         """Fetches form items"""
-        response = self.session.get(self.items_url, self.items_params)
-        self.handle_response(response)
-        return response.json()
+        resp = self.session.get(self.items_url, self.items_params)
+        self.handle_response(resp)
+        return resp.json()
 
-    def handle_response(self, response: Response):
+    @staticmethod
+    def handle_response(response: Response):
         """Handles HTTP Repsonse code"""
         if response.status_code == 200:
             pass
         elif response.status_code == 401:  # Authentication info is missing or invalid.
-            raise FormsiteInvalidAuthenticationException(response)
+            raise FormsiteInvalidAuthenticationException(
+                response,
+                "Please check if token, directory and server are correct",
+            )
         elif response.status_code == 403:  # Forbidden.
             raise FormsiteForbiddenException(response)
         elif response.status_code == 404:  # Path or object not found.
