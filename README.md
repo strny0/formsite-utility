@@ -1,6 +1,6 @@
 # Formsite Utility
 
-CLI tool + module for formsite automation.
+Python library and CLI tool for interacing with the FormSite API
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/31145f1b97934080981a53783803701f)](https://www.codacy.com/gh/strny0/formsite-utility/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=strny0/formsite-utility&amp;utm_campaign=Badge_Grade)
 [![PyPI version](https://badge.fury.io/py/formsite-util.svg)](https://badge.fury.io/py/formsite-util)
@@ -11,7 +11,7 @@ CLI tool + module for formsite automation.
 This program performs an export of a specified formsite form with parameters
 A faster alternative to a manual export from the formsite website. It uses the formsite API v2 to perform exports of results. You can specify parametrs in commandline to filter these results. Allow advanced features like link extraction and even download of files to a specified directory.
 
-Supported python versions: | `3.6` | `3.7` | `3.8` | `3.9+` |
+Supported python versions: | `3.8` | `3.9` | `3.10+` |
 
 ## Installation
 
@@ -30,23 +30,13 @@ pip install formsite-util
 The required packages are:
 
 ```txt
-pytz>=2021.1
-pandas>=1.2.4
-tqdm>=4.60.0
-regex>=2021.4.4
-aiohttp>=3.7.4.post0
-requests>=2.25.1
-aiofiles>=0.6.0
-dataclasses>=0.8
-python_dateutil>=2.8.1
-```
-
-Recommended packages:
-
-```txt
-colorama (for fixing broken console progressbars)
-pyarrow or fastparquet (engine for writing to parquet)
-openpyxl (engine for writing to excel)
+aiohttp
+requests
+tqdm
+pytz
+pandas
+pyarrow
+openpyxl
 ```
 
 ## Usage
@@ -61,8 +51,6 @@ You can access the help page with **`getform -h`**
 
 ## **CLI Documentation:**
 
-**`NOTE:` QUOTES AROUND ARGUMENTS ARE OPTIONAL**
-
 ### **Authorization arguments:**
 
 Authorization arguments are required for nearly all operations.
@@ -73,17 +61,17 @@ getform -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
 
 **Token**: Your Formsite API token.
 
-**Server**: Your Formsite server. A part of the url. https:/<span></span>/`fsX`.forms… <- the 'fsX' part. For example 'fs22'.
+**Server**: Your Formsite server. A part of the url. https:/<span></span>/`fsX`.forms… <- the 'fsX' part. For example 'fs4'.
 
-**Directory**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/`gnosdH`/hfjfdyjyf
+**Directory**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/`directory`/hfjfdyjyf
 
 ### **Results parameters:**
 
-Results parameters are used to set filters upon the results you are retreiving from a specific form. All but the `--form` argument are optional.
+Results parameters are used to set filters upon the results you are retreiving from a specific form.
 
-**Form**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/gnosdH/`hfjfdyjyf` or by running `getform -L` to list all forms and their IDs
+**Form**: Can be found under [Share > Links > Directory] It is the highlighted part of the url: https:/<span></span>/fsXX.formsite.com/gnosdH/`form_id` or by running `getform -l` to list all forms and their IDs
 
-#### **After and before Reference #**
+#### **Filter by Reference #**
 
 You can provide arguments `--afterref *int* and --beforeref *int*` to specify an interval of which reference numbers to get from your export. It is the same as setting a filter based on reference number when doing an export from the formsite website.
 
@@ -95,9 +83,9 @@ $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
 -o
 ```
 
-This will output a csv with results in between reference numbers `14856178` and `15063325`.
+This will output results in between reference numbers `14856178` and `15063325`.
 
-#### **After and before Date**
+#### **Filter by Date**
 
 You can provide arguments `--afterdate *date* and --beforedate *date*` to specify an interval of which dates to get from your export. It is the same as setting a filter based on date number when doing an export from the formsite website.
 
@@ -105,8 +93,8 @@ Valid datetime formats are `ISO 8601`, `yyyy-mm-dd` or `yyyy-mm-dd HH:MM:SS`
 
 ```txt
 ISO 8601 example
-yyyy-mm-ddTHH:MM:SSZ  
-2021-01-20T12:00:00Z is 20th Januray, 2021 at noon
+yyyy-mm-ddTHH:MM:SSZ
+2021-01-20T12:00:00Z is 20th January, 2021 at noon in UTC timezone
 ```
 
 Example:
@@ -117,28 +105,26 @@ $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
 -o
 ```
 
-This will retrieve all results in for the month of January.
+This will retrieve all results in for the month of January 2021 in UTC.
 
 #### **Timezone:**
 
-The dates provided are in your **local timezone**. This can become a problem if your organizations' formsite account is set to a particular timezone you are not in, especially when deleting results/attachments using date filters.
+The dates provided are in UTC. This can become a problem if your organizations formsite account is set to a particular timezone you are not in, especially when deleting results/attachments using date filters.
 
 You can set a manual offset with the `-T` or `--timezone` arguments.
-Valid input can be an offset in the `+05:00` | `-03:00` or `+0500` format or a timezone databse name such as `America/Chicago`. This will shift formsite statistics dates *(column Date Start/End time for example)* and your before/after date argument to your input timezone by a timedelta of your `local time - target time`.
+Valid input is a timezone database name such as `America/Chicago`. This will shift formsite statistics dates *(column Date | Start time | Finish time)* and your before/after date argument to your input timezone to the same UTC time but in the target timezone.
 
-Example offset: I am in `CET`, passing `-T 'America/Chicago'`. My input afterdate is `--afterdate 2021-04-10`. It will become `2021-04-09 17:00:00` as the timezone difference between these 2 zones is 7 hours (in daylight savings time). Additionally, columns Date, Start time, End Time will also be shifted by 7 hours back.
+Example usage: I want to get results for a certain day in non-UTC timezone. Passing `-T 'America/Chicago'`, my input args `--afterdate 2021-04-10 --beforedate 2021-4-11` will become `2021-04-09 18:00:00` and `2021-04-10 18:00:00`. Additionally, columns Date, Start time, Finish time will also be shifted.
 
 Example:
 
 ```bash
-$ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
---afterdate '2021-02-01T00:00:00Z' ---beforedate '2021-02-01T06:30:00Z' \
--T 'America/New_York' -o
+$ getform -t 'token' -d 'directory' -s 'server' -f 'form_id' --afterdate '2021-02-01T00:00:00Z' --beforedate '2021-02-01T06:30:00Z' -T 'America/New_York' -o
 ```
 
 #### **Sorting:**
 
-Invoked with `--sort` [asc|desc] ex: `--sort asc`
+Invoked with `--sort` [asc|desc] ex: `--sort desc`
 
 Sorts rows based on Reference # column. Defaults to descending.
 
@@ -159,22 +145,18 @@ You can use the `-o` flag to output your export to a file. If you don't specify 
 You can leave the `-o` flag by itself or you can specify a path, either relative or absolute to a file you want to output to. If you don't include a path, it will default to its current directory, the file will be a csv with the name in the following format:
 
 ```txt
-export_formID_date.csv => eg. export_JFa87fa_2021-04-08--20:00:18.csv
+export_formID_date.csv => eg. export_formID_2021-04-08--20-00-18.csv
 ```
 
 The output file changes completely based on what extension you give it. Supported filetypes are:
 
  | `.csv`
  | `.xlsx`
- | `.json`
  | `.pkl`
  | `.pickle`
  | `.parquet`
- | `.md`
- | `.txt`
- |
-
-*(json returns a records oriented array, in case of duplicate column names appends a _number)*
+ | `.hdf`
+ | `.feather`
 
 Example:
 
@@ -185,12 +167,12 @@ $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
 
 ```bash
 $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
--o './output.json'
+-o './output.feather'
 ```
 
 #### **CSV Encoding:**
 
-Specify encoding of the output file (if output format supports it). Defaults to 'utf-8'
+Specify encoding of the output file (if output format supports it). Defaults to 'utf-8-sig'
 
 Invoked with `--encoding utf-8`
 
@@ -198,15 +180,15 @@ Invoked with `--encoding utf-8`
 
 Specify separator of the output file (if output format supports it). Defaults to ',' (comma)
 
-Invoked with `--separator ,`
+Invoked with `--separator ','`
 
 #### **CSV Line ending:**
 
-Specify line terminator of the output file (if output format supports it). Defaults to '\n' (LF) (newline)
+Specify line terminator of the output file (if output format supports it).
 
-Can be one of: { LF, CR, CRLF }
+Can be one of: { LF, CR, CRLF, os_default }
 
-Invoked with: `--line_terminator LF`
+Invoked with: `--line_terminator os_default`
 
 #### **CSV Quoting:**
 
@@ -214,9 +196,9 @@ Specify quoting level of the output file (if output format supports it). Default
 
 More info about the quoting levels: <https://docs.python.org/3/library/csv.html>
 
-Can be one of: { ALL, MINIMAL, NONNUMERIC, NONE }
+Can be one of: { QUOTE_ALL, QUOTE_MINIMAL, QUOTE_NONNUMERIC, QUOTE_NONE }
 
-Invoked with: `--quoting MINIMAL`
+Invoked with: `--quoting QUOTE_MINIMAL`
 
 #### **Date format:**
 
@@ -240,20 +222,20 @@ The links file defaults to the same directory as the `getform.py` with the file 
 
 You can use the `-D` option to download all links to a directory you specify, just like with the `-o` argument. The file will be saved with the filename in the link `reference#_filename.ext`
 
-Invoked with: `-D` or `--download` 'path/to/folder' | `-x` or `--extract_links` path/to/file
+Invoked with: `-D` or `--download` 'path/to/folder' | `-x` or `--extract` path/to/file
 
 Example:
 
 ```bash
 $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
--D './download_03/' -X '\.jpg$'
+-D './download_03/' -xre '\.jpg$'
 ```
 
-##### (will create a directory download_03 in the folder where you run it and save all files that end with .jpg uploaded to the form)
+##### ^^^Example (will create a directory download_03 in the folder where you run it and save all files that end with .jpg uploaded to the form)
 
 #### **Links regex:**
 
-You can also specify a regex to filter links. You will only get links that contain a match of a regex you provide with the `-X` option:
+You can also specify a regex to filter links. You will only get links that contain a match of a regex you provide with the `-xre` or `--extract_regex` option:
 
 ```txt
 ex: \.json$   - will only return files that end with .json
@@ -281,7 +263,7 @@ If download time exceeds it, it will throw a timeout error and retry up until re
 
 Invoked with: `--timeout x`
 
-Defaults to `80` seconds
+Defaults to `160` seconds
 
 #### **Retries:**
 
@@ -289,29 +271,23 @@ Number of times to retry downloading files if the download fails.
 
 Invoked with: `--retries x`
 
-Defaults to `1`
+Defaults to `3`
 
 #### **Strip prefix:**
 
 If you enable this option, filenames of downloaded files will not have f-xxx-xxx- prefix.
 
-Invoked with: `--stripprefix`
+Invoked with: `--strip_prefix`
 
 #### **Filename regex:**
 
-If you include this argument, filenames of the files you download from formsite servers `will remove characters that dont match the regex` from their filename.
+If you include this argument, filenames of the files you download from formsite servers will remove characters that dont match the regex from their filename.
 
-Invoked with: `-R` or `--filename_regex`
+Invoked with: `-Dre` or `--download_regex`
 
-Example: `-R '[^\w\_\-]+'` will only keep alphanumeric chars, underscores and dashes in filename.
+Example: `-Dre '[^\w\_\-]+'` will only keep alphanumeric chars, underscores and dashes in filename.
 
 ##### (in case of filename colissions, appends _number)
-
-#### **Get download status:**
-
-If you enable this option, a text file with status for each downloaded link will be saved (complete or incomplete). Will contain detailed reason why it failed for each link.
-
-Invoked with: `--get_download_status`
 
 ### **Other arguments:**
 
@@ -319,59 +295,79 @@ Invoked with: `--get_download_status`
 
 `-h --help` - shows a help message and exits
 
-`--disable_progressbars` If you use this flag, program will not display progressbars to console
+`--disable_progressbars` or `-P` If you use this flag, program will not display progressbars to console
 
-`-l --list_columns` - shows you the IDs of each column and exits
-
-`-L --list_forms` - prints all forms, can be saved as csv if you provide a path to a file (`-L list.csv`).
+`-l --list_forms` - prints all forms, can be saved as csv if you provide a path to a file (`-l list.csv`).
 
 ##### You can pair this with `getform (...) -L | grep form name` to find form ID easily
+##### Or pipe it into less `getform (...) -L | less` to browse it
 
 `-V --version` - displays the current version and exits
 
+`-v --verbose` - displays logger information to stdout, disables progress bars
+
 ## **Module Examples:**
 
-**All methods and classes have docstrings and are typed**
+### formsite_util
 
+The formsite-util package provides several interfaces for common tasks.
+
+### High level interfaces
+
+FormsiteSession: Represents HTTP connection for results/items requests
+
+FormsiteParameters: Represents parameters for results/items requests
+
+FormsiteForm: Represents the form data and session
+
+FormsiteFormsList: Represents the list of all forms for the specified account
+
+FormCache: 
+
+### Low level interfaces
+
+FormFetcher: Result/Item fetching operations
+
+FormParser: Result/Item parsing operations
+
+FormData: Represents the form data without session
+
+FormsiteLogger: Custom logger you may connect to your own logging
+
+## Module Example usage
 ```python
-# Example functionality in your program
-from formsite_util import FormsiteInterface, FormsiteCredentials, FormsiteParams
+from formsite_util import FormsiteForm, FormsiteSession, FormCache, FormsiteFormsList
 
-# required information is form id and access credentials
-# result parameters are optional
-form_id = 'yourFormsID'
-form_id = 'xAf93cf' # example
+token = "efwfjwi0fj0W4JG340G343G" # not real token
+server = "fs1"
+directory = "aqWfcw"
 
-login = FormsiteCredentials('yourToken','yourServer','yourDirectory')
-login = FormsiteCredentials('kDawe9gar984j093gihn94','fs22','Wa1fn8') # example
+with FormsiteSession(token, server, directory) as session:
 
-my_params = FormsiteParams(afterdate='2021-04-01', timezone='America/Chicago')
+    # Basic fetch
+    form = FormsiteForm.from_session(form_id, session)
+    my_params = FormsiteParameters(after_date='2021-04-01', timezone='America/Chicago')
+    form.fetch(params=my_params) # perform the API Fetch
+    
+    form.data ... # work with the form data (DataFrame)
+    form.item ... # or with form items
+    form.to_csv('./here.csv') # store the form data in a file
 
-# context manager use is optional
-# you can also use `interface = FormsiteInterface(...)`
-with FormsiteInterface(form_id, login, params=my_params) as interface:
+    form_list = FormsiteFormsList.from_session(session)
+    form_list.fetch()
+    form_list.data ... # work with Form list data
 
-    # list all forms on account and save them to a csv
-    interface.ListAllForms(save2csv='./my_list_of_all_forms.csv')
+    # FormCache usage
+    cache = FormCache("./cache", "parquet")
+    cache.save(form)
+    
+    # Load form data from cache and initialize it into a Form object with a session
+    form_data = cache.load(some_form_id)
+    another_form = FormsiteForm.from_session(some_form_id, session, form_data)
+    P = FormsiteParameters(after_id=max(another_form.data['Reference #']))
+    another_form.fetch(params=P)
+    cache.update(another_form)
 
-    # export form to a file
-    interface.WriteResults('./my_results.csv')
-
-    # download all files submitted to your form
-    interface.DownloadFiles('./dl_folder/',
-                            max_concurrent_downloads = 100,
-                            overwrite_existing = False)
-
-    # dowloaded files' filenames will only have characters that match the regex
-    interface.DownloadFIles('./dl_folder2/', filename_regex=r'[^A-Za-z0-9\_\-]+')
-
-    # extract all links to files that match the regex - files that end with .json
-    json_files_in_form = interface.ReturnLinks(links_regex=r'\.json$')
-
-    # export results to pandas dataframe
-    my_form_as_dataframe = interface.ReturnResults()
-    # or 
-    my_form_as_dataframe = interface.Data
 ```
 
 ## Notes
@@ -399,7 +395,7 @@ You can find API related information of your specific form under:
 
 ## License
 
-© 2021 Jakub Strnad
+© 2022 Jakub Strnad
 
 MIT License
 Please see LICENSE.<span></span>md for more details.
