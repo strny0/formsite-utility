@@ -10,6 +10,7 @@ from pathlib import Path
 
 # ----
 from formsite_util.form_error import InvalidItemsStructureException
+from formsite_util.logger import FormsiteLogger
 
 
 class FormData:
@@ -100,8 +101,10 @@ class FormData:
             index=False,
             encoding=encoding,
         )
+        self.logger.debug(f"Form Data: Saved form to file '{path}'")
 
     def to_excel(self, path: str) -> None:
         """Save Formsite form as an excel with reasonable default settings (Warning: Slow for large data)"""
         path = Path(path).resolve().as_posix()
         self.data.to_excel(path, index=False)
+        self.logger.debug(f"Form Data: Saved form to file '{path}'")

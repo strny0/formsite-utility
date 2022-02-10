@@ -39,8 +39,6 @@ class FormCache:
              `pickle`
              `json`
              `csv`
-
-        (csv format is not recommended)
         """
         _VALID_FORMATS = ["feather", "hdf", "parquet", "pickle", "json", "csv"]
 
@@ -118,6 +116,10 @@ class FormCache:
         with open(metadata_path, "w", encoding="utf-8") as fp:
             json.dump(metadata, fp, indent=4)
 
+        # ----
+        msg = f"Saving form {form.form_id} data in '{data_path}' metadata in '{metadata_path}'"
+        self.logger.debug(msg)
+
     def load(self, form_id: str) -> Union[FormData, None]:
         """Load FormData of this form_id from cache_dir
 
@@ -157,6 +159,10 @@ class FormCache:
         form.items = {"items": metadata.get("items", None)}
         form.uses_items = True
 
+        # ----
+        msg = f"Loaded {form_id} data from '{data_path}' metadata from '{metadata_path}'"
+        self.logger.debug(msg)
+
         return form
 
     def update(self, form: FormsiteForm) -> FormsiteForm:
@@ -183,6 +189,8 @@ class FormCache:
             data=data,
         )
         self.save(new_form)
+        msg = f"Updated cache for {form.form_id}"
+        self.logger.debug(msg)
         return new_form
 
     def list_metadata(self) -> List[dict]:

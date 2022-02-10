@@ -88,7 +88,7 @@ class FormParser:
                     parsed[parent_key] = f"{parsed[parent_key]} | {val}"
             else:
                 parsed[key] = val
-
+        self.logger.debug(f"Form Parser: Successfully parsed {len(parsed)} results")
         return parsed
 
     def feed(self, results: dict) -> None:

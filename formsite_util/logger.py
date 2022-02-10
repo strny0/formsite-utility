@@ -16,7 +16,7 @@ class FormsiteLogger(logging.Logger):
     def __new__(cls, *args, **kwargs):
         """Prevents duplicate instances of this object"""
         if cls._instance is None:
-            cls._instance = cls()
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:

@@ -36,7 +36,7 @@ def shift_date_from_tz_to_utc(date: dt, tz: str) -> dt:
     return date + offset
 
 
-@dataclass
+@dataclass(frozen=True)
 class FormsiteParameters:
 
     """FormsiteParameters class

@@ -43,9 +43,15 @@ class FormsiteSession:
         self.directory = directory
         self._session = requests.session()
         self._session.headers.update(
-            {"Authorization": f"bearer {token}", "Accept": "application/json"}
+            {
+                "Authorization": f"bearer {token}",
+                "Accept": "application/json",
+            }
         )
         self.logger: FormsiteLogger = FormsiteLogger()
+        self.logger.debug(
+            f"Formsite Session: Initilazied object for url '{self.url_base}'"
+        )
 
     def __enter__(self):
         return self
@@ -69,6 +75,8 @@ class FormsiteSession:
             if v is self:
                 instance, count = self._instances.get(k)
                 if count <= 1:
+                    msg = f"Formsite session: Closing session to '{self.url_base}'"
+                    self.logger.debug(msg)
                     del self._instances[k]
                 else:
                     self._instances[k] = (instance, count - 1)

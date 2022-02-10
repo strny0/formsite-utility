@@ -5,10 +5,8 @@ fetch.py
 
 """
 
-
-import sys
 from time import sleep
-from typing import Generator, Tuple
+from typing import Generator
 from requests import Response, HTTPError
 from formsite_util.form_error import (
     FormsiteForbiddenException,
@@ -66,12 +64,16 @@ class FormFetcher:
         while True:
             try:
                 if self.cur_page > self.total_pages:
+                    self.logger.debug("API Fetch: Complete")
                     return StopIteration
                 resp = self.fetch_result(self.cur_page)
                 self.handle_response(resp)
                 self.cur_page += 1
                 self.total_pages = int(resp.headers.get("Pagination-Page-Last"))
                 self.total_pages = min(ceil(results_per_page / 500), self.total_pages)
+                self.logger.debug(
+                    f"API Fetch: Fetched page {self.cur_page}/{self.total_pages} for form {self.form_id}"
+                )
                 yield resp.json()
 
             except FormsiteRateLimitException:
@@ -88,6 +90,7 @@ class FormFetcher:
         """Fetches form items"""
         resp = self.session.get(self.items_url, self.items_params)
         self.handle_response(resp)
+        self.logger.debug(f"API Fetch: Fetched items for form {self.form_id}")
         return resp.json()
 
     @staticmethod

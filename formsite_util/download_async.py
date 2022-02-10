@@ -5,12 +5,10 @@ this module contains the functionality for downloading downloading
 many urls concurrently with a worker based queue+semaphore asyncio approach
 """
 from __future__ import annotations
-from logging import Logger
 import os
 from collections import namedtuple
 import asyncio
 import shutil
-from time import perf_counter
 from typing import Callable, List, Optional, Set
 from aiohttp import (
     ClientSession,
@@ -138,10 +136,12 @@ class DownloadWorkerState:
 
     def mark_success(self, dl: DownloadItem) -> None:
         """Increments internal counter to match completed downloads."""
+        self.logger.debug(f"DownloadStatus: Success '{dl.url}' saved in '{dl.path}'")
         self._mark(dl, "OK", self.success_urls, self.success)
 
     def mark_fail(self, dl: DownloadItem, fail_exception: Exception) -> None:
         """Increments internal counter to match completed downloads."""
+        self.logger.debug(f"DownloadStatus: Failure '{dl.url}'")
         self._mark(dl, repr(fail_exception), self.failed_urls, self.failed)
 
     def _mark(self, dl: DownloadItem, status: str, add_to: Set[str], count_to: int):
@@ -226,6 +226,7 @@ class DownloadWorker:
 
     def _error_handling(self, ex: Exception, dl: DownloadItem) -> None:
         """Decides what errors cancel downloads and which are retried."""
+        self.logger.debug(f"DownloadError: for '{dl.url}' | {ex}")
         if isinstance(ex, ClientResponseError):
             if ex.status in [403, 404]:
                 self.internal_state.mark_fail(dl, ex)
@@ -242,4 +243,5 @@ class DownloadWorker:
         """Puts failed downloads to the end of queue, if attempt < max retry."""
         new_dl = DownloadItem(dl.url, dl.path, dl.attempt + 1)
         self.internal_state.enqueued += 1
+        self.logger.debug(f"DownloadStatus: Retry '{dl.url}' attempt {dl.attempt}")
         self.queue.put_nowait(new_dl)

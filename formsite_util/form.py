@@ -63,7 +63,6 @@ class FormsiteForm(FormData):
         super().__init__()
         self.form_id: str = form_id
         self.session: FormsiteSession = session
-        self.logger: FormsiteLogger = FormsiteLogger()
 
         if (
             session is None
@@ -77,6 +76,8 @@ class FormsiteForm(FormData):
             self._data = data._data
             self._items = data._items
             self._uses_items = data._uses_items
+
+        self.logger.debug(f"FormsiteForm: Initialized form object {form_id}")
 
     def __repr__(self) -> str:
         return f"<FormsiteForm {self.form_id}>"
@@ -99,15 +100,8 @@ class FormsiteForm(FormData):
             directory (str): Formsite User directory
             data (FormData, optional): Prepopulate form with this FormData object
         """
-
-        self = cls()
-        self.form_id = form_id
-        self.session = FormsiteSession(token, server, directory)
-        if data is not None:
-            self._data = data._data
-            self._items = data._items
-            self._uses_items = data._uses_items
-        return self
+        session = FormsiteSession(token, server, directory)
+        return cls(form_id=form_id, session=session, data=data)
 
     @classmethod
     def from_session(
@@ -126,15 +120,7 @@ class FormsiteForm(FormData):
         Returns:
             FormsiteForm: FormsiteForm object
         """
-
-        self = cls()
-        self.form_id = form_id
-        self.session = session
-        if data is not None:
-            self._data = data._data
-            self._items = data._items
-            self._uses_items = data._uses_items
-        return self
+        return cls(form_id=form_id, session=session, data=data)
 
     def fetch(
         self,
@@ -162,6 +148,8 @@ class FormsiteForm(FormData):
         fetcher = FormFetcher(self.form_id, self.session, params)
         parser = FormParser()
         self.uses_items = False
+        msg = f"Formsite Form: Fetching data for {self.form_id} | {params}"
+        self.logger.debug(msg)
         if results:
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
