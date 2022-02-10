@@ -557,6 +557,14 @@ def get_args() -> Namespace:
         help="If you use this flag, program will not display progressbars to console.",
     )
 
+    g_debug.add_argument(
+        "-v",
+        "--verbose",
+        default=False,
+        action="store_true",
+        help="Enable verbose logging to a log file.",
+    )
+
     args, uargs = parser.parse_known_args()
 
     if uargs:  # if any unknown arguments were passed
