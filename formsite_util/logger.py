@@ -12,6 +12,7 @@ class FormsiteLogger(logging.Logger):
     """Custom logger. Key=formsite"""
 
     _instance = None
+    _init_flag = False
 
     def __new__(cls, *args, **kwargs):
         """Prevents duplicate instances of this object"""
@@ -20,4 +21,8 @@ class FormsiteLogger(logging.Logger):
         return cls._instance
 
     def __init__(self) -> None:
-        super().__init__("formsite", logging.WARNING)
+        if FormsiteLogger._init_flag:
+            return
+
+        super().__init__("formsite", logging.DEBUG)
+        FormsiteLogger._init_flag = True

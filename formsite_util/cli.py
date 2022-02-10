@@ -39,14 +39,17 @@ def main():
     """The main program (CLI)"""
     global FETCH_PBAR
     global DOWNLOAD_PBAR
-    LOG = FormsiteLogger()
+    log = FormsiteLogger()
     args = get_args()
 
     # Initialize logging
     if args.verbose:
-        LOG.level = logging.DEBUG
-        fh = logging.FileHandler(sys.stdout)
-        LOG.addHandler(fh)
+        sh = logging.StreamHandler(sys.stdout)
+        fmt = logging.Formatter("[%(levelname)s] %(message)s")
+        sh.setFormatter(fmt)
+        sh.setLevel(logging.DEBUG)
+        log.addHandler(sh)
+        args.disable_progressbars = True
 
     # Initialize session
     with FormsiteSession(args.token, args.server, args.directory) as session:

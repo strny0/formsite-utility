@@ -68,12 +68,12 @@ class FormFetcher:
                     return StopIteration
                 resp = self.fetch_result(self.cur_page)
                 self.handle_response(resp)
-                self.cur_page += 1
                 self.total_pages = int(resp.headers.get("Pagination-Page-Last"))
                 self.total_pages = min(ceil(results_per_page / 500), self.total_pages)
                 self.logger.debug(
                     f"API Fetch: Fetched page {self.cur_page}/{self.total_pages} for form {self.form_id}"
                 )
+                self.cur_page += 1
                 yield resp.json()
 
             except FormsiteRateLimitException:
