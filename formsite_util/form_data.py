@@ -26,7 +26,7 @@ class FormData:
 
     @property
     def data(self) -> pd.DataFrame:
-        """Formsite data as pandas DataFrame
+        """Formsite data as pandas DataFrame without items labels
 
         Returns:
             pd.DataFrame: form data
@@ -44,7 +44,7 @@ class FormData:
 
     @property
     def data_labels(self) -> pd.DataFrame:
-        """Formsite data as pandas DataFrame
+        """Formsite data as pandas DataFrame with items labels
 
         Returns:
             pd.DataFrame: form data
@@ -53,6 +53,14 @@ class FormData:
             return None
         else:
             return self._data.rename(columns=self.labels)
+
+    @data_labels.setter
+    def data_labels(self, *args, **kwargs):
+        raise TypeError("Setting data for data_labels not allowed")
+
+    @data_labels.deleter
+    def data_labels(self):
+        pass
 
     @property
     def labels(self) -> dict:

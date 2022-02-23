@@ -51,7 +51,7 @@ class FormFetcher:
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
         self.url_results = f"{self.url_base}/forms/{self.form_id}/results"
         self.url_items = f"{self.url_base}/forms/{self.form_id}/items"
-        self.auth_header = {"Authoriztion": f"bearer {token}"}
+        self.auth_header = {"Authorization": f"bearer {token}"}
         # ----
         self.total_pages = 1
         self.cur_page = 1
@@ -106,7 +106,14 @@ class FormFetcher:
             return resp
 
     def fetch_items(self, results_labels_id: int = 11) -> dict:
-        """Fetches form items"""
+        """Fetches form items
+
+        Args:
+            results_labels_id (int, optional): Fetch result labels of this particular id. Defaults to 11.
+
+        Returns:
+            dict: Formsite form's items dictionary
+        """
         with Session() as session:
             session.headers.update(self.auth_header)
             rl = {"results_labels": results_labels_id}

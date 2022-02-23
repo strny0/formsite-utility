@@ -7,8 +7,8 @@ list.py
 from __future__ import annotations
 import pandas as pd
 from pathlib import Path
+from requests import Session
 from formsite_util.logger import FormsiteLogger
-from formsite_util.session import FormsiteSession
 
 
 def readable_filesize(number: int) -> str:
@@ -26,59 +26,23 @@ class FormsiteFormsList:
 
     def __init__(
         self,
-        session: FormsiteSession = None,
-        token: str = None,
-        server: str = None,
-        directory: str = None,
+        token: str,
+        server: str,
+        directory: str,
     ) -> None:
-        """FormsiteFormsList master constructor
+        """FormsiteFormsList constructor
 
         Args:
-            session (FormsiteSession): FormsiteSession object
-
-            OR
-
             token (str): Formsite API Token
             server (str): Formsite Server (fsX.formsite.com)
             directory (str): Formsite Directory
         """
         super().__init__()
+        self.auth_header = {"Authoriztion": f"bearer {token}"}
         self._data: pd.DataFrame = pd.DataFrame()
-        self.session: FormsiteSession = session
-        if (
-            session is None
-            and token is not None
-            and server is not None
-            and directory is not None
-        ):
-            self.session = FormsiteSession(token, server, directory)
         self.logger: FormsiteLogger = FormsiteLogger()
-        self.forms_url = f"{self.session.url_base}/forms"
-
-    @classmethod
-    def from_session(cls, session: FormsiteSession) -> FormsiteFormsList:
-        """FormsiteFormsList constructor
-
-        Args:
-            session (FormsiteSession): FormsiteSession object
-        """
-        return cls(session=session)
-
-    @classmethod
-    def from_credentials(
-        cls,
-        token: str,
-        server: str,
-        directory: str,
-    ) -> FormsiteFormsList:
-        """FormsiteFormsList constructor
-
-        Args:
-            token (str): Formsite API Token
-            server (str): Formsite Server (fsX.formsite.com)
-            directory (str): Formsite User directory
-        """
-        return cls(token=token, server=server, directory=directory)
+        self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
+        self.url_forms: str = f"{self.url_base}/forms"
 
     @property
     def data(self) -> pd.DataFrame:
@@ -101,8 +65,10 @@ class FormsiteFormsList:
     def fetch(self):
         """Perform the API Fetch for the list of forms"""
         # GET https://{server}.formsite.com/api/v2/{user_dir}/forms
-        with self.session.get(self.forms_url) as resp:
-            data = resp.json()
+        with Session() as session:
+            session.headers.update(self.auth_header)
+            with session.get(self.url_forms) as resp:
+                data = resp.json()
 
         self.data = self.parse(data)
 

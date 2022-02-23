@@ -114,12 +114,13 @@ class FormParser:
         return list(chain(self.data))
 
     @staticmethod
-    def create_rename_map(items: list) -> dict:
+    def create_rename_map(items: dict) -> dict:
         """Creates a mapping for pd.rename(column=...) from items (list of records {id, label, position}."""
+        items_l = items["items"]
         rename_map = {}
         parent_label_map = {}
-        label_map = {item["id"]: item["label"] for item in items}
-        for item in items:
+        label_map = {item["id"]: item["label"] for item in items_l}
+        for item in items_l:
             key = item["id"]
             if "children" in item:
                 for c in item["children"]:

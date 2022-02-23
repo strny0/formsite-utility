@@ -38,22 +38,16 @@ class FormsiteForm(FormData):
         token: str,
         server: str,
         directory: str,
-        data: FormData = None,
+        prepoulate_data: FormData = None,
     ):
-        """FormsiteForm master constructor
+        """FormsiteForm constructor
 
         Args:
-            form_id (str): Formsite Form ID
-            session (FormsiteSession): FormsiteSession object
-            data (FormData, optional): Prepopulate form with this FormData object
-
-            OR
-
             form_id (str): Formsite Form ID
             token (str): Formsite API Token
             server (str): Formsite Server (fsX.formsite.com)
             directory (str): Formsite Directory
-            data (FormData, optional): Prepopulate form with this FormData object
+            prepoulate_data (FormData, optional): Prepopulate form with this FormData object
         """
 
         super().__init__()
@@ -61,7 +55,11 @@ class FormsiteForm(FormData):
         self.token: str = token
         self.server: server = server
         self.directory: directory = directory
-        self.data: pd.DataFrame = data
+        if prepoulate_data is not None:
+            self._data = prepoulate_data._data
+            self._items = prepoulate_data._items
+            self._labels = prepoulate_data._labels
+
         self.logger.debug(f"Initialized {repr(self)}")
 
     def __repr__(self) -> str:
@@ -69,23 +67,34 @@ class FormsiteForm(FormData):
 
     def fetch(
         self,
-        results: bool = True,
-        items: bool = True,
+        fetch_results: bool = True,
+        fetch_items: bool = True,
         params: FormsiteParameters = FormsiteParameters(),
         fetch_delay: float = 3.0,
         fetch_callback: Callable = None,
+        # ---
+        cache_items: bool = False,
+        cache_items_path: str = None,
+        cache_results: bool = False,
+        cache_results_path: str = None,
     ):
-        """Updates the FormsiteForm object instance with the data from Formsite accoridng to input
+        """Updates the FormsiteForm object instance with the data from Formsite accoridng to input params
 
-        Args:
-            results (bool, optional): Pull results within parameters. Defaults to True.
-            items (bool, optional): Pull items (of resultslabels id). Defaults to True.
+        Fetch Args:
+            fetch_results (bool, optional): Pull results within parameters. Defaults to True.
+            fetch_items (bool, optional): Pull items (of resultslabels id). Defaults to True.
             params (FormsiteParameters): Pull results and items according to these parameters.
             fetch_delay (float): Time delay between individual API calls in seconds.
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
 
-        fetch_callback function signature:
-            function(cur_page: int, total_pages: int, data: dict) -> None
+        Cache Args:
+            cache_items (bool) : ... Defaults to False. TODO
+            cache_items_path (str) : ... Defaults to None. TODO
+            cache_results (bool) : ... Defaults to False. TODO
+            cache_results_path (str) : ... Defaults to None. TODO
+
+        Callback function signature:
+            Callable(cur_page: int, total_pages: int, data: dict) -> None
         """
         fetcher = FormFetcher(
             self.form_id,
@@ -96,9 +105,11 @@ class FormsiteForm(FormData):
         )
         parser = FormParser()
         # ----
-        self.logger.debug(f"{repr(self)} fetching data | {params}")
+        self.logger.debug(f"{repr(self)} fetching | {params}")
         # ----
-        if results:
+        if fetch_results:
+            if cache_results:
+                ...
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
                 if not data.get("results"):
@@ -118,7 +129,9 @@ class FormsiteForm(FormData):
             if params.last is not None:
                 self.data = self.data.head(params.last)
 
-        if items:
+        if fetch_items:
+            if cache_items:
+                ...
             self.items = fetcher.fetch_items()
             self.labels = parser.create_rename_map(self.items)
 
@@ -234,7 +247,8 @@ class FormsiteForm(FormData):
         urls = set()
         for col in self.data.columns:
             try:
-                tmp = self.data[self.data[col].str.fullmatch(url_re) == True][col]
+                url_mask: pd.Index = self.data[col].str.fullmatch(url_re) == True
+                tmp: pd.Series = self.data[url_mask][col]
                 tmp = tmp.str.split("|")
                 tmp = tmp.explode().str.strip()
                 urls = urls.union(tmp.to_list())
