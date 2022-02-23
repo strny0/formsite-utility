@@ -6,6 +6,49 @@ Python library and CLI tool for interacing with the FormSite API
 [![PyPI version](https://badge.fury.io/py/formsite-util.svg)](https://badge.fury.io/py/formsite-util)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/formsite-util)
 
+## Quickstart
+
+### CLI
+
+Install:
+
+```bash
+$ pip install formsite-util
+```
+
+TOKEN: Formsite API access token, acquired from account settings
+
+Look at the formsite URL when accessing one of your forms
+
+https:/<span></span>/`SERVER`.formsite.com/`DIRECTORY`/`FORM_ID`
+
+Export a form:
+
+```bash
+$ getform -t TOKEN -s SERVER -d DIRECTORY -f FORM_ID -o ./my_export.csv
+```
+
+Download files uploaded to a form:
+
+```bash
+$ getform -t TOKEN -s SERVER -d DIRECTORY -f FORM_ID -D ./download_dir/
+```
+
+### Module
+
+```python
+from formsite_util import FormsiteForm
+
+form = FormsiteForm(FORM_ID, TOKEN, SERVER, DIRECTORY)
+form.fetch()
+
+df = form.data # data with columns as column IDs
+df = form.data_labels # data with columns as the actual labels
+
+# work with df
+...
+```
+
 ## Overview
 
 This program performs an export of a specified formsite form with parameters
