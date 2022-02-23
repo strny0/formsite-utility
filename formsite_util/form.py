@@ -5,20 +5,17 @@ form.py
 """
 
 from __future__ import annotations
-from math import ceil
 import os
 from pathlib import Path
 from time import sleep
 import re
-from typing import Callable, Coroutine, Generator, List, Optional
+from typing import Callable, Generator, List, Optional
 import pandas as pd
 from requests import Session
 
 # ----
 from formsite_util.form_error import FormsiteNoResultsException
-from formsite_util.logger import FormsiteLogger
 from formsite_util.parameters import FormsiteParameters
-from formsite_util.session import FormsiteSession
 from formsite_util.fetcher import FormFetcher
 from formsite_util.form_parser import FormParser
 from formsite_util.download import download_sync, filter_urls
@@ -37,11 +34,10 @@ class FormsiteForm(FormData):
 
     def __init__(
         self,
-        form_id: str = None,
-        session: FormsiteSession = None,
-        token: str = None,
-        server: str = None,
-        directory: str = None,
+        form_id: str,
+        token: str,
+        server: str,
+        directory: str,
         data: FormData = None,
     ):
         """FormsiteForm master constructor
@@ -62,71 +58,19 @@ class FormsiteForm(FormData):
 
         super().__init__()
         self.form_id: str = form_id
-        self.session: FormsiteSession = session
-
-        if (
-            session is None
-            and token is not None
-            and server is not None
-            and directory is not None
-        ):
-            self.session = FormsiteSession(token, server, directory)
-
-        if data is not None:
-            self._data = data._data
-            self._items = data._items
-            self._uses_items = data._uses_items
-
-        self.logger.debug(f"FormsiteForm: Initialized form object {form_id}")
+        self.token: str = token
+        self.server: server = server
+        self.directory: directory = directory
+        self.data: pd.DataFrame = data
+        self.logger.debug(f"Initialized {repr(self)}")
 
     def __repr__(self) -> str:
-        return f"<FormsiteForm {self.form_id}>"
-
-    @classmethod
-    def from_credentials(
-        cls,
-        form_id: str,
-        token: str,
-        server: str,
-        directory: str,
-        data: Optional[FormData] = None,
-    ) -> FormsiteForm:
-        """FormsiteForm constructor
-
-        Args:
-            form_id (str): Formsite Form ID
-            token (str): Formsite API Token
-            server (str): Formsite Server (fsX.formsite.com)
-            directory (str): Formsite User directory
-            data (FormData, optional): Prepopulate form with this FormData object
-        """
-        session = FormsiteSession(token, server, directory)
-        return cls(form_id=form_id, session=session, data=data)
-
-    @classmethod
-    def from_session(
-        cls,
-        form_id: str,
-        session: FormsiteSession,
-        data: Optional[FormData] = None,
-    ) -> FormsiteForm:
-        """FormsiteForm constructor (share same HTTP session across different forms)
-
-        Args:
-            form_id (str): Formsite Form ID
-            session (FormsiteSession): FormsiteSession object
-            data (FormData, optional): Prepopulate form with this FormData object
-
-        Returns:
-            FormsiteForm: FormsiteForm object
-        """
-        return cls(form_id=form_id, session=session, data=data)
+        return f"<{type(self).__name__} {self.form_id}>"
 
     def fetch(
         self,
         results: bool = True,
         items: bool = True,
-        use_items: bool = True,
         params: FormsiteParameters = FormsiteParameters(),
         fetch_delay: float = 3.0,
         fetch_callback: Callable = None,
@@ -136,7 +80,6 @@ class FormsiteForm(FormData):
         Args:
             results (bool, optional): Pull results within parameters. Defaults to True.
             items (bool, optional): Pull items (of resultslabels id). Defaults to True.
-            use_items (bool, optional): Set columns to use labels from items, otherwise use column ids and metadata ids. Defaults to True.
             params (FormsiteParameters): Pull results and items according to these parameters.
             fetch_delay (float): Time delay between individual API calls in seconds.
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
@@ -144,12 +87,17 @@ class FormsiteForm(FormData):
         fetch_callback function signature:
             function(cur_page: int, total_pages: int, data: dict) -> None
         """
-        assert self.session is not None, "Initialized without FormsiteSession object."
-        fetcher = FormFetcher(self.form_id, self.session, params)
+        fetcher = FormFetcher(
+            self.form_id,
+            self.token,
+            self.server,
+            self.directory,
+            params,
+        )
         parser = FormParser()
-        self.uses_items = False
-        msg = f"Formsite Form: Fetching data for {self.form_id} | {params}"
-        self.logger.debug(msg)
+        # ----
+        self.logger.debug(f"{repr(self)} fetching data | {params}")
+        # ----
         if results:
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
@@ -172,10 +120,7 @@ class FormsiteForm(FormData):
 
         if items:
             self.items = fetcher.fetch_items()
-            if use_items:
-                self.uses_items = True
-                rename_map = parser.create_rename_map(self.items)
-                self.data = self.data.rename(columns=rename_map)
+            self.labels = parser.create_rename_map(self.items)
 
     def downloader(
         self,
@@ -282,7 +227,9 @@ class FormsiteForm(FormData):
         Returns:
             List[str]: List of URLs to files uploaded to the form.
         """
-        url_re_pat = rf"(https\:\/\/{self.session.server}\.formsite\.com\/{self.session.directory}\/files\/.*)"
+        url_re_pat = (
+            rf"(https\:\/\/{self.server}\.formsite\.com\/{self.directory}\/files\/.*)"
+        )
         url_re = re.compile(url_re_pat)
         urls = set()
         for col in self.data.columns:

@@ -5,8 +5,8 @@ form_data.py
 """
 
 from typing import Union
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 
 # ----
 from formsite_util.form_error import InvalidItemsStructureException
@@ -14,13 +14,14 @@ from formsite_util.logger import FormsiteLogger
 
 
 class FormData:
-    """Formsite API Form object, representing the data (without HTTP session)"""
+    """Formsite API Form object, representing the data"""
 
     def __init__(self) -> None:
         """FormsiteFormData constructor"""
-        self._uses_items = None
+        self._labels = None
         self._items = None
         self._data = pd.DataFrame()
+        self._data_labels = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
 
     @property
@@ -33,43 +34,56 @@ class FormData:
         return self._data
 
     @data.setter
-    def data(self, value):
-        assert isinstance(value, pd.DataFrame), "Invalid value."
-        self._data = value
+    def data(self, df):
+        assert isinstance(df, pd.DataFrame), "Invalid value."
+        self._data = df
 
     @data.deleter
     def data(self):
         del self._data
 
     @property
-    def uses_items(self) -> Union[bool, None]:
-        """Form uses items (labels) as columns instead of the column/metadata IDs
+    def data_labels(self) -> pd.DataFrame:
+        """Formsite data as pandas DataFrame
 
         Returns:
-            True if uses items. False if uses column/metadata IDs. None if unknown.
+            pd.DataFrame: form data
         """
-        return self._uses_items
+        if self.labels is None:
+            return None
+        else:
+            return self._data.rename(columns=self.labels)
 
-    @uses_items.setter
-    def uses_items(self, value):
-        assert value in [True, False, None], "Invalid value."
-        self._uses_items = value
+    @property
+    def labels(self) -> dict:
+        """User defined labels
 
-    @uses_items.deleter
-    def uses_items(self):
-        del self._uses_items
+        Returns:
+            Mapping of {id:label, ...}. None if unknown.
+        """
+        return self._labels
+
+    @labels.setter
+    def labels(self, value: dict):
+        assert isinstance(value, dict), "Invalid value."
+        self._labels = value
+
+    @labels.deleter
+    def labels(self):
+        del self._labels
 
     @property
     def items(self) -> Union[list, None]:
         """Form's result labels object
 
         Items structure:
-            List of object
-            Each object has an `id`, `label` and `position` records
-        [
-            {'id': '100', 'label': 'formsite control label text', 'position': 1},
-            ...
-        ]
+            Dictonary with object 'items' [...item...]
+            Each item has an `id`, `label` and `position` records
+
+        { "items": [
+                {'id': '100', 'label': 'label_text', 'position': 1}, ...
+            ]
+        }
 
         Returns:
             List of records or None if not fetched.
@@ -79,13 +93,11 @@ class FormData:
 
     @items.setter
     def items(self, value):
-        if isinstance(value, dict):
-            self._items = value["items"]
-        elif isinstance(value, list):
+        if isinstance(value, dict) and "items" in value:
             self._items = value
         else:
             raise InvalidItemsStructureException(
-                "Passed invalid items object to FormsiteForm,items or FormData.items. Expected either a ditionary in the format {'items':[...]} or a list in format [{id:..., ...}, {id:..., ...}]"
+                "Passed invalid items object to FormsiteForm,items or FormData.items. Expected a dictionary in the format {'items':[...]}"
             )
 
     @items.deleter
