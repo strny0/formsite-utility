@@ -90,16 +90,23 @@ class FormsiteForm(FormData):
             fetch_results (bool, optional): Pull results within parameters. Defaults to True.
             fetch_items (bool, optional): Pull items (of resultslabels id). Defaults to True.
             params (FormsiteParameters): Pull results and items according to these parameters.
-            result_labels_id (int, optional): ... TODO
+            result_labels_id (int, optional): Results labels id to use when fetching items. Defaults to None.
             fetch_delay (float): Time delay between individual API calls in seconds.
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
 
         Cache Args:
-            cache_items_path (str) : ... Defaults to None. TODO
-            cache_results_path (str) : ... Defaults to None. TODO
+            cache_items_path (str) : Path where to store form items (as json). Defaults to None (will not store).
+            cache_results_path (str) : Path where to store form results. Defaults to None (will not store).
 
-        Callback function signature:
-            Callable(cur_page: int, total_pages: int, data: dict) -> None
+
+        Supported Cache formats (file extensions) are:
+            - parquet (recommended)
+            - pkl | pickle
+            - feather
+            - hdf
+
+        Callback funciton signature:
+            function(cur_page: int, total_pages: int, data: dict) -> None
         """
         params = params.copy()
         self.logger.debug(f"{repr(self)} fetching with {params}")

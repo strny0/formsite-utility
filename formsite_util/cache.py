@@ -63,7 +63,6 @@ def results_load(path: str) -> pd.DataFrame:
     Supported formats are:
         - parquet
         - feather
-        - json
         - pkl | pickle
         - hdf
     Raises:
@@ -78,8 +77,6 @@ def results_load(path: str) -> pd.DataFrame:
             df = pd.read_parquet(path)
         elif ext == "feather":
             df = pd.read_feather(path)
-        elif ext == "json":
-            df = pd.read_json(path, orient="records")
         elif ext in ("pkl" "pickle"):
             df = pd.read_pickle(path)
         elif ext == "xlsx":
@@ -91,6 +88,8 @@ def results_load(path: str) -> pd.DataFrame:
                 f"Invalid extension in path, '{ext}' is not a supported serialization format"
             )
     except FileNotFoundError:
+        df = pd.DataFrame()
+    except ValueError:  # For json
         df = pd.DataFrame()
 
     return df
@@ -106,7 +105,6 @@ def results_save(data: pd.DataFrame, path: str):
     Supported formats are:
         - parquet
         - feather
-        - json
         - pkl | pickle
         - hdf
 
@@ -119,8 +117,6 @@ def results_save(data: pd.DataFrame, path: str):
         data.to_parquet(path)
     elif ext == "feather":
         data.to_feather(path)
-    elif ext == "json":
-        data.to_json(path, orient="records")
     elif ext in ("pkl" "pickle"):
         data.to_pickle(path)
     elif ext == "xlsx":
