@@ -18,7 +18,6 @@ import pandas as pd
 # ----
 from formsite_util.form import FormsiteForm
 from formsite_util.list import FormsiteFormsList
-from formsite_util.session import FormsiteSession
 from formsite_util.parameters import FormsiteParameters
 from formsite_util.logger import FormsiteLogger
 
@@ -52,78 +51,71 @@ def main():
         args.disable_progressbars = True
 
     # Initialize session
-    with FormsiteSession(args.token, args.server, args.directory) as session:
+    # ----
+    if args.list_forms is not None:
+        forms_list = FormsiteFormsList(args.token, args.server, args.directory)
+        forms_list.fetch()
         # ----
-        if args.list_forms is not None:
-            forms_list = FormsiteFormsList.from_session(session)
-            forms_list.fetch()
-            # ----
-            if not args.list_forms:
-                if args.sort_list_by in ["results_count", "files_size"]:
-                    df = forms_list.data.sort_values(
-                        by=args.sort_list_by,
-                        ascending=False,
-                    )
-                else:
-                    df = forms_list.data.sort_values(
-                        by=args.sort_list_by,
-                        ascending=True,
-                    )
-                # ----
-                df = df[["name", "form_id", "state", "results_count", "files_size_human"]]
-                df.columns = ["name", "form_id", "state", "results count", "files size"]
-                pd.set_option("display.max_rows", None)
-                pd.set_option("display.max_columns", None)
-                pd.set_option("display.width", None)
-                pd.set_option("display.max_colwidth", 42)
-                print(df.reset_index(drop=True))
+        if not args.list_forms:
+            if args.sort_list_by in ["results_count", "files_size"]:
+                df = forms_list.data.sort_values(
+                    by=args.sort_list_by,
+                    ascending=False,
+                )
             else:
-                path = Path(args.list_forms).resolve().as_posix()
-                forms_list.to_csv(path)
-            sys.exit(0)
-        # ----
-
-        form = FormsiteForm.from_session(args.form, session)
-        params = FormsiteParameters(
-            last=args.last,
-            after_id=args.afterref,
-            before_id=args.beforeref,
-            after_date=args.afterdate,
-            before_date=args.beforedate,
-            resultslabels=args.resultslabels,
-            resultsview=args.resultsview,
-            timezone=args.timezone,
-            sort=args.sort,
-        )
+                df = forms_list.data.sort_values(
+                    by=args.sort_list_by,
+                    ascending=True,
+                )
+            # ----
+            df = df[["name", "form_id", "state", "results_count", "files_size_human"]]
+            df.columns = ["name", "form_id", "state", "results count", "files size"]
+            pd.set_option("display.max_rows", None)
+            pd.set_option("display.max_columns", None)
+            pd.set_option("display.width", None)
+            pd.set_option("display.max_colwidth", 42)
+            print(df.reset_index(drop=True))
+        else:
+            path = Path(args.list_forms).resolve().as_posix()
+            forms_list.to_csv(path)
+        sys.exit(0)
+    # ----
+    form = FormsiteForm(args.form, args.token, args.server, args.directory)
+    params = FormsiteParameters(
+        last=args.last,
+        after_id=args.afterref,
+        before_id=args.beforeref,
+        after_date=args.afterdate,
+        before_date=args.beforedate,
+        resultslabels=args.resultslabels,
+        resultsview=args.resultsview,
+        timezone=args.timezone,
+        sort=args.sort,
+    )
+    if not args.disable_progressbars:
+        FETCH_PBAR = tqdm(desc=f"Exporting {args.form}")
+    form.fetch(
+        use_items=args.use_items,
+        params=params,
+        fetch_callback=fetch_pbar_callback,
+    )
+    if not args.disable_progressbars:
+        FETCH_PBAR.close()
+    # ----
+    if args.output is not None:
+        save_output(args, form)
+    if args.latest_id is not None:
+        save_latest_id(args, form)
+    if args.extract is not None:
+        save_extract(args, form)
+    if args.download is not None:
+        loop = asyncio.get_event_loop()
         if not args.disable_progressbars:
-            FETCH_PBAR = tqdm(desc=f"Exporting {args.form}")
-        form.fetch(
-            use_items=args.use_items,
-            params=params,
-            fetch_callback=fetch_pbar_callback,
-        )
+            DOWNLOAD_PBAR = tqdm(desc=f"Downloading from {args.form}")
+        save_download(args, form, loop)
         if not args.disable_progressbars:
-            FETCH_PBAR.close()
-
-        # ----
-
-        if args.output is not None:
-            save_output(args, form)
-
-        if args.latest_id is not None:
-            save_latest_id(args, form)
-
-        if args.extract is not None:
-            save_extract(args, form)
-
-        if args.download is not None:
-            loop = asyncio.get_event_loop()
-            if not args.disable_progressbars:
-                DOWNLOAD_PBAR = tqdm(desc=f"Downloading from {args.form}")
-            save_download(args, form, loop)
-            if not args.disable_progressbars:
-                DOWNLOAD_PBAR.close()
-        # ----
+            DOWNLOAD_PBAR.close()
+    # ----
 
 
 def save_output(args: Namespace, form: FormsiteForm):
