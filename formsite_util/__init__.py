@@ -6,8 +6,6 @@ The formsite-util package provides several interfaces for common tasks.
 
 ## High level interfaces
 
-FormsiteSession: Represents HTTP connection for results/items requests
-
 FormsiteParameters: Represents parameters for results/items requests
 
 FormsiteForm: Represents the form data and session
@@ -28,7 +26,6 @@ FormsiteLogger: Custom logger you may connect to your own logging
 
 """
 
-from .session import FormsiteSession
 from .form import FormsiteForm
 from .form_data import FormData
 from .fetcher import FormFetcher
