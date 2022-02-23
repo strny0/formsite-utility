@@ -1,8 +1,4 @@
-"""
-
-form.py
-
-"""
+"""Defines FormsiteForm object and its logic."""
 
 from __future__ import annotations
 import os

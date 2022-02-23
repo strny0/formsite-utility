@@ -1,10 +1,6 @@
-"""
+"""Defines utility functions for caching form items and form results."""
 
-cache.py
-
-"""
-
-from typing import Callable, Optional
+from typing import Optional
 import json
 import pandas as pd
 

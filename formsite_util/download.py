@@ -1,8 +1,4 @@
-"""
-
-download.py
-
-"""
+"""Defines the synchronous Form data downloaded."""
 
 import os
 import re

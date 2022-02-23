@@ -1,15 +1,10 @@
-"""
-
-fetch.py
-
-
-"""
+"""Defines the FormFetcher object and its logic."""
 
 from time import sleep
 from typing import Generator
 from math import ceil
 from requests import Session, Response, HTTPError
-from requests.exceptions import ConnectionError
+from requests.exceptions import ConnectionError as requests_ConnectionError
 from formsite_util.error import (
     FormsiteForbiddenException,
     FormsiteFormNotFoundException,
@@ -105,7 +100,7 @@ class FormFetcher:
         try:
             with session.get(self.url_results, params=params) as resp:
                 return resp
-        except ConnectionError:
+        except requests_ConnectionError:
             self.logger.critical(
                 f"API Fetch {self.form_id}: Target refused connection, waiting and retrying"
             )

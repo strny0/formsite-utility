@@ -1,8 +1,4 @@
-"""
-
-cli.py
-
-"""
+"""Defines the CLI tool and its logic"""
 
 import asyncio
 import logging
@@ -87,7 +83,6 @@ def main():
         before_id=args.beforeref,
         after_date=args.afterdate,
         before_date=args.beforedate,
-        resultslabels=args.resultslabels,
         resultsview=args.resultsview,
         timezone=args.timezone,
         sort=args.sort,
@@ -95,7 +90,6 @@ def main():
     if not args.disable_progressbars:
         FETCH_PBAR = tqdm(desc=f"Exporting {args.form}")
     form.fetch(
-        use_items=args.use_items,
         params=params,
         fetch_callback=fetch_pbar_callback,
     )
@@ -128,21 +122,21 @@ def save_output(args: Namespace, form: FormsiteForm):
     os.makedirs(path.parent.as_posix(), exist_ok=True)
     str_path = path.as_posix()
     ext = str_path.rsplit(".", 1)[-1].lower()
-
+    df = form.data_labels if args.use_items else form.data
     if ext == "xlsx":
         # Write to excel with reasonable default settings
-        form.data.to_excel(str_path, encoding="utf-8", index=False)
+        df.to_excel(str_path, encoding="utf-8", index=False)
     elif ext in ("pickle", "pkl"):
-        form.data.to_pickle(str_path)
+        df.to_pickle(str_path)
     elif ext == "parquet":
-        form.data.to_parquet(str_path)
+        df.to_parquet(str_path)
     elif ext == "feather":
-        form.data.to_feather(str_path)
+        df.to_feather(str_path)
     elif ext == "hdf":
-        form.data.to_hdf(str_path, key=form.form_id)
+        df.to_hdf(str_path, key=form.form_id)
     # Default to CSV
     else:
-        form.data.to_csv(
+        df.to_csv(
             str_path,
             encoding=args.encoding,
             index=False,

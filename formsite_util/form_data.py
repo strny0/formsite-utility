@@ -1,8 +1,4 @@
-"""
-
-form_data.py
-
-"""
+"""Defines the FormData base class and its logic"""
 
 from typing import Union
 from pathlib import Path

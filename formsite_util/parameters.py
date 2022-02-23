@@ -1,8 +1,4 @@
-"""
-
-parameters.py
-
-"""
+"""Defines intermediary FormsiteParameters object"""
 
 from __future__ import annotations
 from dataclasses import dataclass

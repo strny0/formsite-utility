@@ -1,8 +1,4 @@
-"""
-
-form_parser.py
-
-"""
+"""Defines the FormParser object and its logic."""
 
 from itertools import chain
 import re

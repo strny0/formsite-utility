@@ -1,8 +1,4 @@
-"""
-
-logger.py
-
-"""
+"""Defines a singleton logger object used by formsite-util."""
 
 
 import logging

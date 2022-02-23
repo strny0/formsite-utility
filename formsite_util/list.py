@@ -1,12 +1,8 @@
-"""
-
-list.py
-
-"""
+"""Defines FormsiteFormsList object and its logic."""
 
 from __future__ import annotations
-import pandas as pd
 from pathlib import Path
+import pandas as pd
 from requests import Session
 from formsite_util.logger import FormsiteLogger
 

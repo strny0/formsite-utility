@@ -1,9 +1,5 @@
-"""
-download_async.py
+"""This module contains the functionality for downloading downloading many urls concurrently with a worker based queue+semaphore asyncio approach."""
 
-this module contains the functionality for downloading downloading
-many urls concurrently with a worker based queue+semaphore asyncio approach
-"""
 from __future__ import annotations
 import os
 from collections import namedtuple
