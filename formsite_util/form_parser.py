@@ -85,10 +85,11 @@ class FormParser:
     def as_dataframe(self) -> pd.DataFrame:
         """Return data fed into the parser so far as a Pandas DataFrame"""
         df = pd.DataFrame(self.data)
-        df = _order_df_cols(df)
-        _parse_date_col_inplace(df, "date_update")
-        _parse_date_col_inplace(df, "date_start")
-        _parse_date_col_inplace(df, "date_finish")
+        if not df.empty:
+            df = _order_df_cols(df)
+            _parse_date_col_inplace(df, "date_update")
+            _parse_date_col_inplace(df, "date_start")
+            _parse_date_col_inplace(df, "date_finish")
         return df
 
     def as_records(self) -> pd.DataFrame:

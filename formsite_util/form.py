@@ -18,13 +18,15 @@ from formsite_util.error import FormsiteNoResultsException
 from formsite_util.parameters import FormsiteParameters
 from formsite_util.form_fetcher import FormFetcher
 from formsite_util.form_parser import FormParser
-from formsite_util.download import download_sync, filter_urls
+from formsite_util.download import DownloadStatus, download_sync, filter_urls
 from formsite_util.download_async import AsyncFormDownloader
 from formsite_util.form_data import FormData
 from formsite_util.cache import (
     items_load,
     items_match_data,
     items_save,
+    results_load,
+    results_save,
 )
 
 
@@ -79,9 +81,7 @@ class FormsiteForm(FormData):
         fetch_delay: float = 3.0,
         fetch_callback: Callable = None,
         # ---
-        cache_items: bool = False,
         cache_items_path: str = None,
-        cache_results: bool = False,
         cache_results_path: str = None,
     ):
         """Updates the FormsiteForm object instance with the data from Formsite accoridng to input params
@@ -95,32 +95,45 @@ class FormsiteForm(FormData):
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
 
         Cache Args:
-            cache_items (bool) : ... Defaults to False. TODO
             cache_items_path (str) : ... Defaults to None. TODO
-            cache_results (bool) : ... Defaults to False. TODO
             cache_results_path (str) : ... Defaults to None. TODO
 
         Callback function signature:
             Callable(cur_page: int, total_pages: int, data: dict) -> None
         """
-        fetcher = FormFetcher(
-            self.form_id,
-            self.token,
-            self.server,
-            self.directory,
-            params,
-        )
-        parser = FormParser()
-        # ----
-        self.logger.debug(f"{repr(self)} fetching | {params}")
-        # ----
+        params = params.copy()
+        self.logger.debug(f"{repr(self)} fetching with {params}")
+        # -!- RESULTS PART
         if fetch_results:
-            if cache_results:
-                ...
-
+            # ---- handle cache ----
+            if cache_results_path is not None:
+                if not isinstance(cache_results_path, str):
+                    raise TypeError("Invalid path")
+                cached_results = results_load(cache_results_path)
+                if isinstance(cached_results, pd.DataFrame) and not cached_results.empty:
+                    if "id" not in cached_results.columns:
+                        raise ValueError(
+                            "Expected stored data to have the 'id' (Reference #) column. Add this to your results view."
+                        )
+                    self.logger.debug(
+                        f"Cache results {self.form_id}: Overwriting after_id:{max(cached_results['id'])} | before_id:None"
+                    )
+                    params.after_id = max(cached_results["id"])
+                    params.before_id = None
+            # -!!- perform results fetch -!!-
+            fetcher = FormFetcher(
+                self.form_id,
+                self.token,
+                self.server,
+                self.directory,
+                params,
+            )
+            parser = FormParser()
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
-                if not data.get("results"):
+                if not data.get("results") and not (
+                    isinstance(cached_results, pd.DataFrame) and not cached_results.empty
+                ):
                     raise FormsiteNoResultsException("No results in specified parameters")
                 # --- regular case ---
                 parser.feed(data)
@@ -129,21 +142,46 @@ class FormsiteForm(FormData):
                     fetch_callback(fetcher.cur_page, fetcher.total_pages, data)
                 # --- fetch delay ---
                 sleep(fetch_delay)
-
-            self.data = parser.as_dataframe()
+            # ---- finish handling cache ----
+            if cache_results_path is not None:
+                new_data = parser.as_dataframe()
+                self.logger.debug(
+                    f"Cache results {self.form_id}: Appending {new_data.shape[0]} new results"
+                )
+                # --- if there are new results, merge ---
+                if new_data.shape[0] > 0:
+                    merged_results = pd.concat(
+                        [new_data, cached_results], ignore_index=True
+                    )
+                    merged_results = merged_results.reset_index(drop=True)
+                    self.data = merged_results
+                    results_save(merged_results, cache_results_path)
+                # --- otherwise just use the data we got ---
+                else:
+                    self.data = cached_results
+            else:
+                self.data = parser.as_dataframe()
             tz_shif_inplace(self.data, "date_update", params.timezone)
             tz_shif_inplace(self.data, "date_start", params.timezone)
             tz_shif_inplace(self.data, "date_finish", params.timezone)
             if params.last is not None:
                 self.data = self.data.head(params.last)
 
+        # -!- ITEMS PART
         if fetch_items:
-            if cache_items:
-                tmp = items_load(cache_items_path)
-                if not items_match_data(tmp, self.data.columns):
-                    tmp = fetcher.fetch_items(result_labels_id)
-                    items_save(tmp, cache_items_path)
-                self.items = tmp
+            if cache_items_path is not None:
+                if not isinstance(cache_items_path, str):
+                    raise TypeError("Invalid path")
+                cached_results = items_load(cache_items_path)
+                if cached_results is None or not items_match_data(
+                    cached_results, self.data.columns
+                ):
+                    self.logger.debug(
+                        f"Cache items {self.form_id}: Fetching new items for cache"
+                    )
+                    cached_results = fetcher.fetch_items(result_labels_id)
+                    items_save(cached_results, cache_items_path)
+                self.items = cached_results
             else:
                 self.items = fetcher.fetch_items(result_labels_id)
             self.labels = parser.create_rename_map(self.items)
@@ -157,7 +195,7 @@ class FormsiteForm(FormData):
         filename_substitution_re_pat: str = r"",
         strip_prefix: bool = False,
         overwrite_existing: bool = True,
-    ) -> Generator[int, None, None]:
+    ) -> Generator[DownloadStatus, None, None]:
         """Download files uploaded to the form via the File upload control (sequential)
 
         Generator yields:
@@ -182,7 +220,7 @@ class FormsiteForm(FormData):
             filename_substitution_re_pat=filename_substitution_re_pat,
             overwrite_existing=overwrite_existing,
         )
-
+        # ----
         with Session() as session:
             for url, path in filtered_URLs:
                 status = download_sync(

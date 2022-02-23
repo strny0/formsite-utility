@@ -18,10 +18,9 @@ class FormData:
 
     def __init__(self) -> None:
         """FormsiteFormData constructor"""
-        self._labels = None
-        self._items = None
-        self._data = pd.DataFrame()
-        self._data_labels = pd.DataFrame()
+        self._labels: dict = None
+        self._items: dict = None
+        self._data: pd.DataFrame = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
 
     @property
@@ -34,12 +33,12 @@ class FormData:
         return self._data
 
     @data.setter
-    def data(self, df):
+    def data(self, df) -> None:
         assert isinstance(df, pd.DataFrame), "Invalid value."
         self._data = df
 
     @data.deleter
-    def data(self):
+    def data(self) -> None:
         del self._data
 
     @property

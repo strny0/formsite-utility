@@ -4,6 +4,7 @@ parameters.py
 
 """
 
+from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Union
 from datetime import datetime as dt
@@ -36,7 +37,7 @@ def shift_date_from_tz_to_utc(date: dt, tz: str) -> dt:
     return date + offset
 
 
-@dataclass(frozen=True)
+@dataclass
 class FormsiteParameters:
 
     """FormsiteParameters class
@@ -88,3 +89,16 @@ class FormsiteParameters:
             results_params["results_view"] = self.resultsview
 
         return results_params
+
+    def copy(self) -> FormsiteParameters:
+        """Returns a new instance of FormsiteParameters with the same values as this one"""
+        return type(self)(
+            self.last,
+            self.after_id,
+            self.before_id,
+            self.after_date,
+            self.before_date,
+            self.timezone,
+            self.resultsview,
+            self.sort,
+        )

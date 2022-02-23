@@ -9,6 +9,7 @@ from time import sleep
 from typing import Generator
 from math import ceil
 from requests import Session, Response, HTTPError
+from requests.exceptions import ConnectionError
 from formsite_util.error import (
     FormsiteForbiddenException,
     FormsiteFormNotFoundException,
@@ -21,6 +22,7 @@ from formsite_util.logger import FormsiteLogger
 from formsite_util.parameters import FormsiteParameters
 
 HTTP_429_WAIT_DELAY = 60  # seconds
+ConnectionError_DELAY = 10
 
 
 class FormFetcher:
@@ -46,7 +48,6 @@ class FormFetcher:
         self.form_id = form_id
         self.params = params
         self.results_params = params.as_dict()
-        self.items_params = params.items_params_dict()
         # ----
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
         self.url_results = f"{self.url_base}/forms/{self.form_id}/results"
@@ -73,7 +74,6 @@ class FormFetcher:
             while True:
                 try:
                     if self.cur_page > self.total_pages:
-                        self.logger.debug("API Fetch: Complete")
                         return StopIteration
                     resp = self.fetch_result(self.cur_page, session)
                     self.handle_response(resp)
@@ -102,8 +102,15 @@ class FormFetcher:
         """
         params = self.results_params.copy()
         params["page"] = page
-        with session.get(self.url_results, params=params) as resp:
-            return resp
+        try:
+            with session.get(self.url_results, params=params) as resp:
+                return resp
+        except ConnectionError:
+            self.logger.critical(
+                f"API Fetch {self.form_id}: Target refused connection, waiting and retrying"
+            )
+            sleep(ConnectionError_DELAY)
+            return self.fetch_result(page, session)
 
     def fetch_items(self, results_labels_id: int = None) -> dict:
         """Fetches form items
