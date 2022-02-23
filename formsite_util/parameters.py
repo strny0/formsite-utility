@@ -10,7 +10,7 @@ from datetime import datetime as dt
 import pytz
 
 # ----
-from formsite_util.form_error import InvalidDateFormatExpection
+from formsite_util.error import InvalidDateFormatExpection
 
 
 def try_parse_date(date: Union[dt, str]) -> dt:
@@ -47,7 +47,7 @@ class FormsiteParameters:
     `before_date` gets only results less than input you provide, expects a `datetime object` or string in `ISO 8601`, `yyyy-mm-dd`, `yyyy-mm-dd HH:MM:SS`.\n
     `timezone` sets the timezone dates in results are relative to, also affects input dates. Expects timezone name eg. `America/Chicago`. Defaults to `Etc/UTC`.\n
     `date_format` using python datetime directives specify what format you want your dates in your csv output file. Defaults to `%Y-%m-%d %H:%M:%S.`\n
-    `resultslabels` and `resultsview` More info on Formsite website or FS API of your specific form.\n
+    resultsview` More info on Formsite website or FS API of your specific form.\n
     `sort` ( "asc" | "desc" ) sorts results by reference number in ascending or descending order. Defaults to 'desc'.
     """
 
@@ -57,11 +57,10 @@ class FormsiteParameters:
     after_date: Optional[Union[str, dt]] = None
     before_date: Optional[Union[str, dt]] = None
     timezone: Optional[str] = "Etc/UTC"
-    resultslabels: Optional[int] = None
     resultsview: Optional[int] = 11
     sort: Optional[str] = "desc"
 
-    def results_params_dict(self, single_page_limit: int = 500) -> dict:
+    def as_dict(self, single_page_limit: int = 500) -> dict:
         """Generates a parameters dictionary that is later passed to params= kw argument when making API calls.
 
         Args:
@@ -89,14 +88,3 @@ class FormsiteParameters:
             results_params["results_view"] = self.resultsview
 
         return results_params
-
-    def items_params_dict(self) -> dict:
-        """Returns a dict that gets parsed as parameters by aiohttp when making a request."""
-        if self.resultslabels is None:
-            ret = {}
-        elif isinstance(self.resultslabels, int):
-            ret = {"results_labels": self.resultslabels}
-        else:
-            raise ValueError(f"resultslabels must be an int, got '{self.resultslabels}'")
-
-        return ret

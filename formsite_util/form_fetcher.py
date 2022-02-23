@@ -45,7 +45,7 @@ class FormFetcher:
         """
         self.form_id = form_id
         self.params = params
-        self.results_params = params.results_params_dict()
+        self.results_params = params.as_dict()
         self.items_params = params.items_params_dict()
         # ----
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
@@ -105,19 +105,23 @@ class FormFetcher:
         with session.get(self.url_results, params=params) as resp:
             return resp
 
-    def fetch_items(self, results_labels_id: int = 11) -> dict:
+    def fetch_items(self, results_labels_id: int = None) -> dict:
         """Fetches form items
 
         Args:
-            results_labels_id (int, optional): Fetch result labels of this particular id. Defaults to 11.
+            results_labels_id (int, optional): Fetch result labels of this particular id. Defaults to None.
 
         Returns:
             dict: Formsite form's items dictionary
         """
         with Session() as session:
             session.headers.update(self.auth_header)
-            rl = {"results_labels": results_labels_id}
-            with session.get(self.url_items, params=rl) as resp:
+            params = (
+                {"results_labels": results_labels_id}
+                if results_labels_id is not None
+                else {}
+            )
+            with session.get(self.url_items, params=params) as resp:
                 self.handle_response(resp)
                 self.logger.debug(f"Formsite API fetch: {self.form_id} items")
                 return resp.json()

@@ -74,8 +74,8 @@ class FormsiteForm(FormData):
         self,
         fetch_results: bool = True,
         fetch_items: bool = True,
-        result_labels_id: int = 11,
         params: FormsiteParameters = FormsiteParameters(),
+        result_labels_id: int = None,
         fetch_delay: float = 3.0,
         fetch_callback: Callable = None,
         # ---
@@ -89,8 +89,8 @@ class FormsiteForm(FormData):
         Fetch Args:
             fetch_results (bool, optional): Pull results within parameters. Defaults to True.
             fetch_items (bool, optional): Pull items (of resultslabels id). Defaults to True.
-            result_labels_id (int, optional): ... TODO
             params (FormsiteParameters): Pull results and items according to these parameters.
+            result_labels_id (int, optional): ... TODO
             fetch_delay (float): Time delay between individual API calls in seconds.
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
 
