@@ -28,9 +28,22 @@ FormsiteLogger: Custom logger you may connect to your own logging
 
 from .form import FormsiteForm
 from .form_data import FormData
-from .fetcher import FormFetcher
+from .form_fetcher import FormFetcher
 from .form_parser import FormParser
 from .parameters import FormsiteParameters
 from .list import FormsiteFormsList
 from .logger import FormsiteLogger
-from .cache import FormCache
+from .consts import METADATA_COLS
+from .error import (
+    FormsiteFileDownloadException,
+    FormsiteForbiddenException,
+    FormsiteFormNotFoundException,
+    FormsiteInternalException,
+    FormsiteInvalidAuthenticationException,
+    FormsiteInvalidParameterException,
+    FormsiteNoResultsException,
+    FormsiteRateLimitException,
+    FormsiteUncachableParametersException,
+    InvalidDateFormatExpection,
+    InvalidItemsStructureException,
+)

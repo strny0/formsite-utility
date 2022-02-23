@@ -14,13 +14,18 @@ import pandas as pd
 from requests import Session
 
 # ----
-from formsite_util.form_error import FormsiteNoResultsException
+from formsite_util.error import FormsiteNoResultsException
 from formsite_util.parameters import FormsiteParameters
-from formsite_util.fetcher import FormFetcher
+from formsite_util.form_fetcher import FormFetcher
 from formsite_util.form_parser import FormParser
 from formsite_util.download import download_sync, filter_urls
 from formsite_util.download_async import AsyncFormDownloader
 from formsite_util.form_data import FormData
+from formsite_util.cache import (
+    items_load,
+    items_match_data,
+    items_save,
+)
 
 
 def tz_shif_inplace(df: pd.DataFrame, col: str, tz_name: str):
@@ -69,6 +74,7 @@ class FormsiteForm(FormData):
         self,
         fetch_results: bool = True,
         fetch_items: bool = True,
+        result_labels_id: int = 11,
         params: FormsiteParameters = FormsiteParameters(),
         fetch_delay: float = 3.0,
         fetch_callback: Callable = None,
@@ -83,6 +89,7 @@ class FormsiteForm(FormData):
         Fetch Args:
             fetch_results (bool, optional): Pull results within parameters. Defaults to True.
             fetch_items (bool, optional): Pull items (of resultslabels id). Defaults to True.
+            result_labels_id (int, optional): ... TODO
             params (FormsiteParameters): Pull results and items according to these parameters.
             fetch_delay (float): Time delay between individual API calls in seconds.
             fetch_callback (Callable, optional): Run this callback every time an API fetch is complete.
@@ -110,6 +117,7 @@ class FormsiteForm(FormData):
         if fetch_results:
             if cache_results:
                 ...
+
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
                 if not data.get("results"):
@@ -131,8 +139,13 @@ class FormsiteForm(FormData):
 
         if fetch_items:
             if cache_items:
-                ...
-            self.items = fetcher.fetch_items()
+                tmp = items_load(cache_items_path)
+                if not items_match_data(tmp, self.data.columns):
+                    tmp = fetcher.fetch_items(result_labels_id)
+                    items_save(tmp, cache_items_path)
+                self.items = tmp
+            else:
+                self.items = fetcher.fetch_items(result_labels_id)
             self.labels = parser.create_rename_map(self.items)
 
     def downloader(

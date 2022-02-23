@@ -10,7 +10,7 @@ import shutil
 from typing import List, Tuple
 from urllib.parse import urlparse
 from requests import Session
-from formsite_util.form_error import FormsiteFileDownloadException
+from formsite_util.error import FormsiteFileDownloadException
 
 
 FS_PREFIX_PAT = re.compile(r"((f|sig)-((\d+?)-)+)")

@@ -9,25 +9,7 @@ import re
 import pandas as pd
 
 from formsite_util.logger import FormsiteLogger
-
-# Columns that appear outside of the "items" object in the response json
-NON_ITEM_COLS = {
-    "id": "Reference #",
-    "result_status": "Status",
-    "login_username": "Username",
-    "login_email": "Email Address",
-    "payment_status": "Payment Status",
-    "payment_amount": "Payment Amount Paid",
-    "score": "Score",
-    "date_update": "Date",
-    "date_start": "Start Time",
-    "date_finish": "Finish Time",
-    "user_ip": "User",
-    "user_browser": "Browser",
-    "user_device": "Device",
-    # "user_os": "OS", # Deprecated, not present in exports
-    "user_referrer": "Referrer",
-}
+from formsite_util.consts import METADATA_COLS
 
 
 def _parse_item(item: dict):
@@ -49,7 +31,7 @@ def _parse_date_col_inplace(df: pd.DataFrame, col: str):
 def _order_df_cols(df: pd.DataFrame):
     """Reorders existing dataframe columns into standard export order"""
     final_order = []
-    hardcoded_cols = list(NON_ITEM_COLS.keys())
+    hardcoded_cols = list(METADATA_COLS.keys())
     df_cols = df.columns
     items_cols = set(df_cols).difference(set(hardcoded_cols))
     # ---- left side ----
@@ -93,7 +75,7 @@ class FormParser:
 
     def feed(self, results: dict) -> None:
         """Parses 1 Formsite results dictionary, appends it to processed data"""
-        mdc = set(NON_ITEM_COLS.keys())
+        mdc = set(METADATA_COLS.keys())
         for record in results["results"]:
             keyset = set(record.keys())
             metadata = {i: record.get(i) for i in keyset.intersection(mdc)}
@@ -138,5 +120,5 @@ class FormParser:
                     rename_map[key] = f"{item['label']} ({parent_label})"
             else:
                 rename_map[key] = item["label"]
-        rename_map.update(NON_ITEM_COLS)
+        rename_map.update(METADATA_COLS)
         return rename_map

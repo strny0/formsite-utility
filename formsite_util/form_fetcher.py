@@ -9,7 +9,7 @@ from time import sleep
 from typing import Generator
 from math import ceil
 from requests import Session, Response, HTTPError
-from formsite_util.form_error import (
+from formsite_util.error import (
     FormsiteForbiddenException,
     FormsiteFormNotFoundException,
     FormsiteInternalException,

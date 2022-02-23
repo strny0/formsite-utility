@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 # ----
-from formsite_util.form_error import InvalidItemsStructureException
+from formsite_util.error import InvalidItemsStructureException
 from formsite_util.logger import FormsiteLogger
 
 
