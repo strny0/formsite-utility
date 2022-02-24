@@ -1,4 +1,12 @@
-# Formsite Utility
+<!-- HEADER -->
+<br />
+<p align="center">
+  <a>
+    <img src="https://www.formsite.com/wp-content/themes/formsite-theme/assets/favicon/favicon-96x96.png" alt="Logo" width="80" height="80">
+  </a>
+
+  <h3 align="center">Formsite Utility</h3>
+</p>
 
 Python library and CLI tool for interacing with the FormSite API
 
@@ -8,13 +16,13 @@ Python library and CLI tool for interacing with the FormSite API
 
 ## Quickstart
 
-### CLI
-
-Install:
+### Install
 
 ```bash
 $ pip install formsite-util
 ```
+
+### CLI
 
 TOKEN: Formsite API access token, acquired from account settings
 
@@ -37,8 +45,10 @@ $ getform -t TOKEN -s SERVER -d DIRECTORY -f FORM_ID -D ./download_dir/
 ### Module
 
 ```python
-from formsite_util import FormsiteForm
+from formsite_util import FormsiteForm, FormsiteFormsList
 
+
+# Formsite Form
 form = FormsiteForm(FORM_ID, TOKEN, SERVER, DIRECTORY)
 form.fetch()
 
@@ -46,6 +56,14 @@ df = form.data # data with columns as column IDs
 df = form.data_labels # data with columns as the actual labels
 
 # work with df
+...
+
+# Formsite Forms List
+formlist = FormsiteFormsList(TOKEN, SERVER, DIRECTORY)
+formlist.fetch()
+
+forms = formlist.data
+# work with forms
 ...
 ```
 
@@ -56,21 +74,7 @@ A faster alternative to a manual export from the formsite website. It uses the f
 
 Supported python versions: | `3.8` | `3.9` | `3.10+` |
 
-## Installation
-
-Unix (macOS, linux):
-
-```bash
-pip3 install formsite-util
-```
-
-Windows:
-
-```cmd
-pip install formsite-util
-```
-
-The required packages are:
+### Dependencies
 
 ```txt
 aiohttp
@@ -90,13 +94,13 @@ or `py -m formsite_util.cli`
 
 or `python3 -m formsite_util.cli`
 
-You can access the help page with **`getform -h`**
+You can access the help page with `getform -h`
 
 ## **CLI Documentation:**
 
 ### **Authorization arguments:**
 
-Authorization arguments are required for nearly all operations.
+Authorization arguments are required for all operations.
 
 ```bash
 getform -t 'TOKEN' -s 'SERVER' -d 'DIRECTORY'
@@ -155,7 +159,7 @@ This will retrieve all results in for the month of January 2021 in UTC.
 The dates provided are in UTC. This can become a problem if your organizations formsite account is set to a particular timezone you are not in, especially when deleting results/attachments using date filters.
 
 You can set a manual offset with the `-T` or `--timezone` arguments.
-Valid input is a timezone database name such as `America/Chicago`. This will shift formsite statistics dates *(column Date | Start time | Finish time)* and your before/after date argument to your input timezone to the same UTC time but in the target timezone.
+Valid input is a timezone database name such as `America/Chicago`. This will shift formsite statistics dates *(columns Date | Start time | Finish time)* and your before/after date argument to your input timezone to the same UTC time but in the target timezone.
 
 Example usage: I want to get results for a certain day in non-UTC timezone. Passing `-T 'America/Chicago'`, my input args `--afterdate 2021-04-10 --beforedate 2021-4-11` will become `2021-04-09 18:00:00` and `2021-04-10 18:00:00`. Additionally, columns Date, Start time, Finish time will also be shifted.
 
@@ -188,18 +192,17 @@ You can use the `-o` flag to output your export to a file. If you don't specify 
 You can leave the `-o` flag by itself or you can specify a path, either relative or absolute to a file you want to output to. If you don't include a path, it will default to its current directory, the file will be a csv with the name in the following format:
 
 ```txt
-export_formID_date.csv => eg. export_formID_2021-04-08--20-00-18.csv
+export_formID_date.csv | example: export_formID_2021-04-08--20-00-18.csv
 ```
 
 The output file changes completely based on what extension you give it. Supported filetypes are:
 
  | `.csv`
  | `.xlsx`
- | `.pkl`
- | `.pickle`
  | `.parquet`
- | `.hdf`
  | `.feather`
+ | `.pkl | .pickle`
+ | `.hdf`
 
 Example:
 
@@ -210,12 +213,12 @@ $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
 
 ```bash
 $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
--o './output.feather'
+-o './output.xlsx'
 ```
 
 #### **CSV Encoding:**
 
-Specify encoding of the output file (if output format supports it). Defaults to 'utf-8-sig'
+Specify encoding of the output file (if output format supports it). Defaults to 'utf-8-sig'.
 
 Invoked with `--encoding utf-8`
 
@@ -274,7 +277,7 @@ $ getform -t 'token' -d 'directory' -s 'server' -f 'form_id'  \
 -D './download_03/' -xre '\.jpg$'
 ```
 
-##### ^^^Example (will create a directory download_03 in the folder where you run it and save all files that end with .jpg uploaded to the form)
+*^Example (will create a directory download_03 in the folder where you run it and save all files that end with .jpg uploaded to the form)*
 
 #### **Links regex:**
 
@@ -330,7 +333,7 @@ Invoked with: `-Dre` or `--download_regex`
 
 Example: `-Dre '[^\w\_\-]+'` will only keep alphanumeric chars, underscores and dashes in filename.
 
-##### (in case of filename colissions, appends _number)
+*^(in case of filename colissions, appends _number)*
 
 ### **Other arguments:**
 
@@ -342,12 +345,14 @@ Example: `-Dre '[^\w\_\-]+'` will only keep alphanumeric chars, underscores and 
 
 `-l --list_forms` - prints all forms, can be saved as csv if you provide a path to a file (`-l list.csv`).
 
-##### You can pair this with `getform (...) -L | grep form name` to find form ID easily
-##### Or pipe it into less `getform (...) -L | less` to browse it
+*^You can pair this with `getform (...) -l | grep form name` to find form ID easily.*
+
+*Or pipe it into less `getform (...) -l | less` to browse it*
+
 
 `-V --version` - displays the current version and exits
 
-`-v --verbose` - displays logger information to stdout, disables progress bars
+`-v --verbose` - displays logger *(level DEBUG)* information to stdout, disables progress bars
 
 ## **Module Examples:**
 
@@ -357,61 +362,87 @@ The formsite-util package provides several interfaces for common tasks.
 
 ### High level interfaces
 
-FormsiteSession: Represents HTTP connection for results/items requests
-
 FormsiteParameters: Represents parameters for results/items requests
 
 FormsiteForm: Represents the form data and session
 
 FormsiteFormsList: Represents the list of all forms for the specified account
 
-FormCache: 
-
 ### Low level interfaces
 
-FormFetcher: Result/Item fetching operations
+FormFetcher: Result/Item fetching operations *(useful to you as a user)*
 
-FormParser: Result/Item parsing operations
+FormParser: Result/Item parsing operations *(useful to you as a user)*
 
-FormData: Represents the form data without session
+FormData: Represents the base form data class *(not very useful)*
 
-FormsiteLogger: Custom logger you may connect to your own logging
+FormsiteLogger: Custom logger you may connect to your own logging *(not very useful)*
 
-## Module Example usage
+## Module example usage
+
+### FormsiteForm example usage
+
 ```python
-from formsite_util import FormsiteForm, FormsiteSession, FormCache, FormsiteFormsList
+from formsite_util import FormsiteForm, FormsiteParameters
 
 token = "efwfjwi0fj0W4JG340G343G" # not real token
 server = "fs1"
 directory = "aqWfcw"
 
-with FormsiteSession(token, server, directory) as session:
+# Get all data for the month of January 2022
+params = FormsiteParameters(
+    after_date="2022-01-01T00:00:00Z", 
+    before_date="2021-02-01T00:00:00Z",
+    )
 
-    # Basic fetch
-    form = FormsiteForm.from_session(form_id, session)
-    my_params = FormsiteParameters(after_date='2021-04-01', timezone='America/Chicago')
-    form.fetch(params=my_params) # perform the API Fetch
-    
-    form.data ... # work with the form data (DataFrame)
-    form.item ... # or with form items
-    form.to_csv('./here.csv') # store the form data in a file
-
-    form_list = FormsiteFormsList.from_session(session)
-    form_list.fetch()
-    form_list.data ... # work with Form list data
-
-    # FormCache usage
-    cache = FormCache("./cache", "parquet")
-    cache.save(form)
-    
-    # Load form data from cache and initialize it into a Form object with a session
-    form_data = cache.load(some_form_id)
-    another_form = FormsiteForm.from_session(some_form_id, session, form_data)
-    P = FormsiteParameters(after_id=max(another_form.data['Reference #']))
-    another_form.fetch(params=P)
-    cache.update(another_form)
-
+form = FormsiteForm(form_id, token, server, directory)
+form.fetch(params=params)
+form.data_labels.to_csv('./2022_jan.csv')
 ```
+
+### FormsiteFormsList example usage
+```python
+from formsite_util import FormsiteFormsList, FormsiteForm
+
+# Iterate through all forms for the account and fetch them
+flist = FormsiteFormsList(token, server, directory)
+flist.fetch()
+
+for form_id in flist.data['form_id'].to_list():
+    form = FormsiteForm(form_id, token, server, directory)
+    form.fetch()
+    form.to_csv(f'./expors/{form_id}_data.csv')
+```
+
+### Caching example
+
+When fetching a form, it is wasteful to fetch everything again.
+
+We wish to spare the API calls due to the rate limit.
+
+For this reason, you may use caching of the items and results.
+
+
+```python
+from formsite_util import FormsiteForm
+
+form = FormsiteForm(form_id, token, server, directory)
+
+
+# By adding these parameters to the fetch request...
+form.fetch(
+    cache_items_path=f'./cache_dir/{form_id}_items.json',
+    cache_results_path=f'./cache_dir/{form_id}_data.parquet',
+)
+
+# For Items:
+#   - You are only re-fetching them if the results labels column IDs don't match the results column IDs (ie. only when necessary)
+
+
+# For Results:
+#   - You are only fetching results since the latest 'id' (aka Reference #) and merging them back
+```
+
 
 ## Notes
 
