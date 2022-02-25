@@ -9,6 +9,7 @@ build_wheel.md
 TODO
 *.ipynb
 old/
+tests/outputs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
