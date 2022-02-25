@@ -1,9 +1,5 @@
 """
 
-# formsite_util
-
-The formsite-util package provides several interfaces for common tasks.
-
 ## High level interfaces
 
 FormsiteParameters: Represents parameters for results/items requests
@@ -25,25 +21,11 @@ FormData: Represents the form data without session
 FormsiteLogger: Custom logger you may connect to your own logging
 
 """
+__version__ = "2.0.0"
 
 from .form import FormsiteForm
-from .form_data import FormData
+from .list import FormsiteFormsList
+from .parameters import FormsiteParameters
 from .form_fetcher import FormFetcher
 from .form_parser import FormParser
-from .parameters import FormsiteParameters
-from .list import FormsiteFormsList
-from .logger import FormsiteLogger
-from .consts import METADATA_COLS
-from .error import (
-    FormsiteFileDownloadException,
-    FormsiteForbiddenException,
-    FormsiteFormNotFoundException,
-    FormsiteInternalException,
-    FormsiteInvalidAuthenticationException,
-    FormsiteInvalidParameterException,
-    FormsiteNoResultsException,
-    FormsiteRateLimitException,
-    FormsiteUncachableParametersException,
-    InvalidDateFormatExpection,
-    InvalidItemsStructureException,
-)
+from .form_data import FormData
