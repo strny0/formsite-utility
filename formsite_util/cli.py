@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 from datetime import datetime as dt
 from argparse import ArgumentParser, RawTextHelpFormatter, Namespace
-from csv import QUOTE_ALL, QUOTE_MINIMAL, QUOTE_NONE, QUOTE_NONNUMERIC
 from tqdm.auto import tqdm
 import pandas as pd
 
@@ -16,24 +15,17 @@ from formsite_util.form import FormsiteForm
 from formsite_util.list import FormsiteFormsList
 from formsite_util.parameters import FormsiteParameters
 from formsite_util.logger import FormsiteLogger
+from formsite_util.consts import QUOTE, LINE_TERM, TIMESTAMP
+from formsite_util.__init__ import __version__
 
-__version__ = "2.0.0"
-QUOTE = {
-    "QUOTE_ALL": QUOTE_ALL,
-    "QUOTE_MINIMAL": QUOTE_MINIMAL,
-    "QUOTE_NONE": QUOTE_NONE,
-    "QUOTE_NONNUMERIC": QUOTE_NONNUMERIC,
-}
-LINE_TERM = {"LF": "\n", "CR": "\r", "CRLF": "\r\n", "os_default": os.linesep}
-TIMESTAMP = dt.now().strftime("%Y-%m-%d--%H-%M-%S")
-FETCH_PBAR = None
-DOWNLOAD_PBAR = None
+_FETCH_PBAR = None
+_DOWNLOAD_PBAR = None
 
 
 def main():
     """The main program (CLI)"""
-    global FETCH_PBAR
-    global DOWNLOAD_PBAR
+    global _FETCH_PBAR
+    global _DOWNLOAD_PBAR
     log = FormsiteLogger()
     args = get_args()
 
@@ -88,13 +80,13 @@ def main():
         sort=args.sort,
     )
     if not args.disable_progressbars:
-        FETCH_PBAR = tqdm(desc=f"Exporting {args.form}")
+        _FETCH_PBAR = tqdm(desc=f"Exporting {args.form}")
     form.fetch(
         params=params,
         fetch_callback=fetch_pbar_callback,
     )
     if not args.disable_progressbars:
-        FETCH_PBAR.close()
+        _FETCH_PBAR.close()
     # ----
     if args.output is not None:
         save_output(args, form)
@@ -105,10 +97,10 @@ def main():
     if args.download is not None:
         loop = asyncio.get_event_loop()
         if not args.disable_progressbars:
-            DOWNLOAD_PBAR = tqdm(desc=f"Downloading from {args.form}")
+            _DOWNLOAD_PBAR = tqdm(desc=f"Downloading from {args.form}")
         save_download(args, form, loop)
         if not args.disable_progressbars:
-            DOWNLOAD_PBAR.close()
+            _DOWNLOAD_PBAR.close()
     # ----
 
 
@@ -144,7 +136,7 @@ def save_output(args: Namespace, form: FormsiteForm):
             line_terminator=LINE_TERM.get(
                 args.line_terminator, LINE_TERM.get("os_default")
             ),
-            quoting=QUOTE.get(args.quoting, QUOTE_MINIMAL),
+            quoting=QUOTE[args.quoting],
             sep=args.separator,
         )
 
@@ -204,18 +196,18 @@ def save_download(args: Namespace, form: FormsiteForm, loop: asyncio.AbstractEve
 
 def fetch_pbar_callback(page: int, total_pages: int, data: dict) -> None:
     """Updates fetch progress bar (if enabled)"""
-    if FETCH_PBAR is None:
+    if _FETCH_PBAR is None:
         return
-    FETCH_PBAR.total = total_pages
-    FETCH_PBAR.update(1)
+    _FETCH_PBAR.total = total_pages
+    _FETCH_PBAR.update(1)
 
 
 def download_pbar_callback(url: str, filepath: str, total_files: int) -> None:
     """Updates download progress bar (if enabled)"""
-    if DOWNLOAD_PBAR is None:
+    if _DOWNLOAD_PBAR is None:
         return
-    DOWNLOAD_PBAR.total = total_files
-    DOWNLOAD_PBAR.update(1)
+    _DOWNLOAD_PBAR.total = total_files
+    _DOWNLOAD_PBAR.update(1)
 
 
 def get_args() -> Namespace:

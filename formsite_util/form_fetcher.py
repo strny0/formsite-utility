@@ -15,9 +15,7 @@ from formsite_util.error import (
 )
 from formsite_util.logger import FormsiteLogger
 from formsite_util.parameters import FormsiteParameters
-
-HTTP_429_WAIT_DELAY = 60  # seconds
-ConnectionError_DELAY = 10
+from formsite_util.consts import ConnectionError_DELAY, HTTP_429_WAIT_DELAY
 
 
 class FormFetcher:
