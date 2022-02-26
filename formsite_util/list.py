@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 from requests import Session
+from formsite_util.form_fetcher import FormFetcher
 from formsite_util.logger import FormsiteLogger
 
 
@@ -34,7 +35,7 @@ class FormsiteFormsList:
             directory (str): Formsite Directory
         """
         super().__init__()
-        self.auth_header = {"Authoriztion": f"bearer {token}"}
+        self.auth_header = {"Authorization": f"bearer {token}"}
         self._data: pd.DataFrame = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
@@ -63,7 +64,9 @@ class FormsiteFormsList:
         # GET https://{server}.formsite.com/api/v2/{user_dir}/forms
         with Session() as session:
             session.headers.update(self.auth_header)
+
             with session.get(self.url_forms) as resp:
+                FormFetcher.handle_response(resp)
                 data = resp.json()
 
         self.data = self.parse(data)

@@ -107,10 +107,11 @@ class FormData:
     def items(self):
         del self._items
 
-    def to_csv(self, path: str, encoding: str = "utf-8-sig") -> None:
+    def to_csv(self, path: str, labels: bool = True, encoding: str = "utf-8-sig") -> None:
         """Save Formsite form as a csv with reasonable default settings"""
         path = Path(path).resolve().as_posix()
-        self.data.to_csv(
+        df = self.data_labels if labels else self.data
+        df.to_csv(
             path,
             date_format="%Y-%m-%d %H:%M:%S",
             index=False,
@@ -118,8 +119,9 @@ class FormData:
         )
         self.logger.debug(f"Form Data: Saved form to file '{path}'")
 
-    def to_excel(self, path: str) -> None:
+    def to_excel(self, path: str, labels: bool = True) -> None:
         """Save Formsite form as an excel with reasonable default settings (Warning: Slow for large data)"""
         path = Path(path).resolve().as_posix()
-        self.data.to_excel(path, index=False)
+        df = self.data_labels if labels else self.data
+        df.to_excel(path, index=False)
         self.logger.debug(f"Form Data: Saved form to file '{path}'")

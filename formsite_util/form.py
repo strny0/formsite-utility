@@ -107,6 +107,14 @@ class FormsiteForm(FormData):
         params = params.copy()
         self.logger.debug(f"{repr(self)} fetching with {params}")
         # -!- RESULTS PART
+        parser = FormParser()
+        fetcher = FormFetcher(
+            self.form_id,
+            self.token,
+            self.server,
+            self.directory,
+            params,
+        )
         if fetch_results:
             # ---- handle cache ----
             if cache_results_path is not None:
@@ -123,15 +131,8 @@ class FormsiteForm(FormData):
                     )
                     params.after_id = max(cached_results["id"])
                     params.before_id = None
+                    fetcher.params = params
             # -!!- perform results fetch -!!-
-            fetcher = FormFetcher(
-                self.form_id,
-                self.token,
-                self.server,
-                self.directory,
-                params,
-            )
-            parser = FormParser()
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
                 if not data.get("results") and not (
