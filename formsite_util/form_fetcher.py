@@ -139,14 +139,14 @@ class FormFetcher:
                 "Please check if token, directory and server are correct",
             )
         elif response.status_code == 403:  # Forbidden.
-            raise FormsiteForbiddenException(response)
+            raise FormsiteForbiddenException(response.text)
         elif response.status_code == 404:  # Path or object not found.
-            raise FormsiteFormNotFoundException(response)
+            raise FormsiteFormNotFoundException(response.text)
         elif response.status_code == 422:  # Invalid parameter.
-            raise FormsiteInvalidParameterException(response)
+            raise FormsiteInvalidParameterException(response.text)
         elif response.status_code == 429:  # Too many requests or too busy.
-            raise FormsiteRateLimitException(response)
+            raise FormsiteRateLimitException(response.text)
         elif response.status_code >= 500:  # Unexpected Formsite internal error.
-            raise FormsiteInternalException(response)
+            raise FormsiteInternalException(response.text)
         else:
-            raise HTTPError(response)
+            raise HTTPError(response.text)
