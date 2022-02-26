@@ -362,17 +362,17 @@ The formsite-util package provides several interfaces for common tasks.
 
 ### High level interfaces
 
-FormsiteParameters: Represents parameters for results/items requests
-
 FormsiteForm: Represents the form data and session
 
 FormsiteFormsList: Represents the list of all forms for the specified account
 
+FormsiteParameters: Represents parameters for results/items requests
+
 ### Low level interfaces
 
-FormFetcher: Result/Item fetching operations *(useful to you as a user)*
+FormFetcher: Result/Item fetching operations *(useful)*
 
-FormParser: Result/Item parsing operations *(useful to you as a user)*
+FormParser: Result/Item parsing operations *(useful)*
 
 FormData: Represents the base form data class *(not very useful)*
 
@@ -422,7 +422,6 @@ We wish to spare the API calls due to the rate limit.
 
 For this reason, you may use caching of the items and results.
 
-
 ```python
 from formsite_util import FormsiteForm
 
@@ -443,6 +442,100 @@ form.fetch(
 #   - You are only fetching results since the latest 'id' (aka Reference #) and merging them back
 ```
 
+### Connecting logging
+
+```python
+import logging
+
+# Create your desired handler object
+# Example Stream handler
+handler = logging.StreamHandler(sys.stdout)
+fmt = logging.Formatter("%(message)s")
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(fmt)
+
+# Add it to the form.logger object using the addHandler method
+form.logger.addHandler(handler)
+
+# NOTE: You only need to do this once for all form objects.
+#       FormsiteLogger is a singleton, only 1 instance may exist at any time.
+#       To do this once at the start of your program, you can do this:
+
+from formsite_util.logger import FormsiteLogger
+l = FormsiteLogger()
+l.addHandler(...)
+
+```
+
+### FormsiteForm class
+
+```python
+from formsite_util import FormsiteForm, FormsiteParameters
+
+form = FormsiteForm(...)
+params = FormsiteParameters(...)
+
+form.fetch(fetch_results=True, # Populates form.data
+           fetch_items=True,   # Populates form.items, form.labels
+           fetch_delay=3.0,    # delay between each API call in seconds
+           params=params,      # Results parameters
+           result_labels_id=0, # Items labels ID found in [Form settings -> Integrations -> Formsite API]
+           )
+
+df1 = form.data 
+# DataFrame with columns as column IDs used by formsite
+# returns data if results were fetched
+
+df2 = form.data_labels 
+# DataFrame with columns as labels of (result_labels_id)
+# data_labels only returns data, if both results and items were fetched
+
+labels_dict = form.labels 
+# The mapping of column ID -> label
+# returns data if items were fetched
+
+items_dict = form.items 
+# The original, unparsed formsite items object
+# returns data if items were fetched
+
+
+form.extract_urls(...)
+# Extracts URLs to all files uploaded to the form using bult in controls
+
+form.downloader(...)
+# Launches a syncrhonous downloader of the files uploaded to the form
+
+form.async_downloader(...)
+# Launches an async downloader of the files uplaoded to the form
+
+form.to_csv(...)
+# Saves the form data or data_labels to a CSV file with the following default settings:
+#   - by default save data_labels
+#   - encoded as utf-8-sig (utf-8 with BOM)
+#   - index=False
+#   - %Y-%m-%d %H:%M:%S datetime format
+
+form.to_excel(...)
+# Saves the form data or data_labels to an Excel file with the following default settings:
+#   - by default save with data_labels
+#   - index=False
+
+```
+
+### FormsiteFormsList class
+
+```python
+from formsite_util import FormsiteFormsList
+
+flist = FormsiteFormsList(...)
+
+flist.fetch()
+
+flist.data
+# DataFrame in the format:
+# form_id | name | state | results_count | files_size | files_size_human | url
+# ...
+```
 
 ## Notes
 
