@@ -82,8 +82,9 @@ requests
 tqdm
 pytz
 pandas
-pyarrow
-openpyxl
+pyarrow # parquet and feather support
+openpyxl # excel support
+tables # hdf support
 ```
 
 ## Usage
