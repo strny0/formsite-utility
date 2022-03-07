@@ -29,3 +29,6 @@ from .parameters import FormsiteParameters
 from .form_fetcher import FormFetcher
 from .form_parser import FormParser
 from .form_data import FormData
+
+# Legacy functionality
+from .legacy import FormsiteCredentials, FormsiteInterface, FormsiteParams
