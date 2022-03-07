@@ -213,55 +213,6 @@ class FormsiteParams:
         results_params.update(self.filters)
         return results_params
 
-    def add_filter(
-        self, search_type: str, col: Union[int, str], search_value: Any
-    ) -> None:
-        """Get results where item with ID x matches search_type value.
-
-        You can edit `self.filters` directly to remove/change filters.
-
-        Args:
-            search_type (str): One of {'equals', 'contains', 'begins', 'ends'}.
-            col (Union[int, str]): Column ID or metadata column name.
-            search_value (Any): Value to search.
-
-        Raises:
-            Exception: Entered invalid search type.
-        """
-        valid_types = {"equals", "contains", "begins", "ends"}
-        if search_type in valid_types:
-            if search_type == "equals":
-                self.filters.update({f"search_equals[{col}]": search_value})
-            elif search_type == "contains":
-                self.filters.update({f"search_contains[{col}]": search_value})
-            elif search_type == "begins":
-                self.filters.update({f"search_begins[{col}]": search_value})
-            elif search_type == "ends":
-                self.filters.update({f"search_ends[{col}]": search_value})
-        else:
-            raise ValueError(
-                f"Invalid search type entered. Must be one of {valid_types}."
-            )
-
-    def set_filter_method(self, method: str):
-        """How to combine multiple search criteria.
-
-        If you don't run this method, defaults to 'and'.
-
-        Args:
-            method (str): One of {'and', 'or'}
-
-        Raises:
-            Exception: Entered invalid method.
-        """
-        valid_methods = {"and", "or"}
-        if method in valid_methods:
-            self.filters.update({"search_method": method})
-        else:
-            raise ValueError(
-                f"Invalid search method entered. Must be one of {valid_methods}."
-            )
-
     def get_items_as_dict(self) -> dict:
         """Returns a dict that gets parsed as parameters by aiohttp when making a request."""
         if self.resultslabels is None:
