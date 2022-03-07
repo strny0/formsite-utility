@@ -5,7 +5,6 @@ Raises:
 
 from dataclasses import dataclass
 from typing import Dict
-import warnings
 
 
 def _sanitize_argument(argument: str, chars2remove: Dict[str, str]) -> str:
@@ -69,9 +68,6 @@ class FormsiteCredentials:
 
     def __post_init__(self) -> None:
         """Confirms validity of input."""
-        warnings.warn(
-            "LegacyWarning: Class FormsiteInterface should now be replaced with FormsiteForm"
-        )
         self.confirm_validity()
 
     def get_auth_header(self) -> dict:

@@ -24,7 +24,6 @@ from .processing import _FormsiteProcessing
 from .api import _FormsiteAPI
 from .auth import FormsiteCredentials
 from tqdm import tqdm
-import warnings
 
 
 def _shift_param_date(date: Union[str, dt], timezone_offset: td) -> str:
@@ -150,7 +149,10 @@ def _validate_path(path: str) -> str:
 @dataclass
 class FormsiteParams:
 
-    """Parameters class (LEGACY DO NOT USE!)
+    """LEGACY DO NOT USE
+
+    Use FormsiteParameters with FormsiteForm instead.
+
     This class stores parameters for Formsite requests\n
     `afterref` gets only results greater than integer you provide\n
     `beforeref` gets only results less than integer you provide\n
@@ -181,10 +183,6 @@ class FormsiteParams:
             self.local_datetime,
         ) = _calculate_tz_offset(self.timezone)
 
-        warnings.warn(
-            "LegacyWarning: Class FormsiteParams should now be replaced with FormsiteParameters."
-        )
-
     def get_params_as_dict(self, single_page_limit: int = 500) -> dict:
         """Generates a parameters dictionary that is later passed to params= kw argument when making API calls.
 
@@ -210,7 +208,6 @@ class FormsiteParams:
         if self.resultsview is not None:  # 11 = all items + statistics results view
             results_params["results_view"] = self.resultsview
 
-        results_params.update(self.filters)
         return results_params
 
     def get_items_as_dict(self) -> dict:
@@ -225,7 +222,9 @@ class FormsiteParams:
 
 @dataclass
 class FormsiteInterface:
-    """A base class for interacting with the formsite API.
+    """LEGACY DO NOT USE
+
+    Use FormsiteForm instead
 
     Documentation: https://pypi.org/project/formsite-util/
 
@@ -290,9 +289,6 @@ class FormsiteInterface:
         self.Links = None
         self.items = None
         self.results = []
-        warnings.warn(
-            "LegacyWarning: Class FormsiteInterface should now be replaced with FormsiteForm"
-        )
 
     def __enter__(self):
         """Allows use of context managers."""
