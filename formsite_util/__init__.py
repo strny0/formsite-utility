@@ -21,7 +21,7 @@ FormData: Represents the form data without session
 FormsiteLogger: Custom logger you may connect to your own logging
 
 """
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 from .form import FormsiteForm
 from .list import FormsiteFormsList
