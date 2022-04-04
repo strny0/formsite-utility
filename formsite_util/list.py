@@ -10,6 +10,8 @@ from formsite_util.logger import FormsiteLogger
 
 def readable_filesize(number: int) -> str:
     """Converts a number (filesize in bytes) to more readable filesize with units."""
+    if number is None:
+        return None
     reductions = 0
     while number >= 1024:
         number = number / 1024
@@ -73,6 +75,7 @@ class FormsiteFormsList:
 
     def parse(self, data: dict) -> pd.DataFrame:
         """Parses forms list json into pandas dataframe"""
+        print(data)
         rows = []
         for item in data["forms"]:
             row = {
@@ -80,8 +83,10 @@ class FormsiteFormsList:
                 "name": item["name"],
                 "state": item["state"],
                 "results_count": item["stats"]["resultsCount"],
-                "files_size": item["stats"]["filesSize"],
-                "files_size_human": readable_filesize(item["stats"]["filesSize"]),
+                "files_size": item["stats"].get("filesSize", None),
+                "files_size_human": readable_filesize(
+                    item["stats"].get("filesSize", None)
+                ),
                 "url": item["publish"]["link"],
             }
             rows.append(row)
