@@ -57,12 +57,13 @@ def main():
                 )
             # ----
             df = df[["name", "form_id", "state", "results_count", "files_size_human"]]
-            df.columns = ["name", "form_id", "state", "results count", "files size"]
-            pd.set_option("display.max_rows", None)
-            pd.set_option("display.max_columns", None)
-            pd.set_option("display.width", None)
-            pd.set_option("display.max_colwidth", 42)
-            print(df.reset_index(drop=True))
+            df.columns = ["name", "form_id", "state", "results_count", "files_size"]
+            df.to_string(
+                sys.stdout,
+                index=False,
+                max_colwidth=42,
+            )
+            print("")
         else:
             path = Path(args.list_forms).resolve().as_posix()
             forms_list.to_csv(path)

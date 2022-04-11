@@ -75,19 +75,17 @@ class FormsiteFormsList:
 
     def parse(self, data: dict) -> pd.DataFrame:
         """Parses forms list json into pandas dataframe"""
-        print(data)
+
         rows = []
         for item in data["forms"]:
             row = {
-                "form_id": item["directory"],
-                "name": item["name"],
-                "state": item["state"],
-                "results_count": item["stats"]["resultsCount"],
-                "files_size": item["stats"].get("filesSize", None),
-                "files_size_human": readable_filesize(
-                    item["stats"].get("filesSize", None)
-                ),
-                "url": item["publish"]["link"],
+                "form_id": item.get("directory", ""),
+                "name": item.get("name", ""),
+                "state": item.get("state", ""),
+                "results_count": item["stats"].get("resultsCount", 0),
+                "files_size": item["stats"].get("filesSize", 0),
+                "files_size_human": readable_filesize(item["stats"].get("filesSize", 0)),
+                "url": item["publish"].get("link", ""),
             }
             rows.append(row)
 
