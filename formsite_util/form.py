@@ -158,6 +158,10 @@ class FormsiteForm(FormData):
                         [new_data, cached_results], ignore_index=True
                     )
                     merged_results = merged_results.reset_index(drop=True)
+                    merged_results = merged_results.drop_duplicates(
+                        subset=["id"],
+                        keep="first",
+                    )
                     self.data = merged_results
                     results_save(merged_results, cache_results_path)
                 # --- otherwise just use the data we got ---
