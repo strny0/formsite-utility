@@ -60,8 +60,8 @@ class FormFetcher:
         Yields:
             Generator[dict]: data_of_page
         """
-        max_page_sz = 500
-        page_sz = self.results_params.get("limit", max_page_sz)
+        # max_page_sz = 500
+        # page_sz = self.results_params.get("limit", max_page_sz)
         with Session() as session:
             session.headers.update(self.auth_header)
             while True:
@@ -71,7 +71,6 @@ class FormFetcher:
                     resp = self.fetch_result(self.cur_page, session)
                     self.handle_response(resp)
                     self.total_pages = int(resp.headers.get("Pagination-Page-Last"))
-                    self.total_pages = min(ceil(page_sz / max_page_sz), self.total_pages)
                     self.logger.debug(
                         f"Formsite API fetch {self.form_id} results | {self.cur_page}/{self.total_pages}"
                     )
