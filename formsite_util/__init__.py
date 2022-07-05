@@ -8,27 +8,28 @@ FormsiteForm: Represents the form data and session
 
 FormsiteFormsList: Represents the list of all forms for the specified account
 
-FormCache: Store formsite forms in a folder
+FormData: Represents the form data without session
 
 ## Low level interfaces
 
-FormFetcher: Result/Item fetching operations
+.logger.FormsiteLogger: Custom logger you can connect to your own logging
 
-FormParser: Result/Item parsing operations
+.form_fetcher.FormFetcher: Result/Item fetching operations
 
-FormData: Represents the form data without session
+.form_parser.FormParser: Result/Item parsing operations
 
-FormsiteLogger: Custom logger you may connect to your own logging
+## Legacy
+
+.legacy.FormsiteCredentials
+
+.legacy.FormsiteInterface
+
+.legacy.FormsiteParams
 
 """
-__version__ = "2.0.4"
+__version__ = "2.0.4.1"
 
 from .form import FormsiteForm
 from .list import FormsiteFormsList
 from .parameters import FormsiteParameters
-from .form_fetcher import FormFetcher
-from .form_parser import FormParser
 from .form_data import FormData
-
-# Legacy functionality
-from .legacy import FormsiteCredentials, FormsiteInterface, FormsiteParams
