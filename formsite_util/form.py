@@ -192,7 +192,7 @@ class FormsiteForm(FormData):
                 self.items = cached_results
             else:
                 self.items = fetcher.fetch_items(result_labels_id)
-            self.labels = parser.create_rename_map(self.items)
+            self._update_labels()
 
     def downloader(
         self,
@@ -289,31 +289,3 @@ class FormsiteForm(FormData):
         )
         # ----
         return downloader
-
-    def extract_urls(self, filter_re_pat=r".+") -> List[str]:
-        """Extract all URLs of files uploaded to the form
-
-        Args:
-            filter_re_pat (regexp, optional): Output only the URLs that match the input regex. Defaults to r".+".
-
-        Returns:
-            List[str]: List of URLs to files uploaded to the form.
-        """
-        url_re_pat = (
-            rf"(https\:\/\/{self.server}\.formsite\.com\/{self.directory}\/files\/.*)"
-        )
-        url_re = re.compile(url_re_pat)
-        urls = set()
-        for col in self.data.columns:
-            try:
-                url_mask: pd.Index = self.data[col].str.fullmatch(url_re) == True
-                tmp: pd.Series = self.data[url_mask][col]
-                tmp = tmp.str.split("|")
-                tmp = tmp.explode().str.strip()
-                urls = urls.union(tmp.to_list())
-            except AttributeError:
-                pass
-
-        # Return all URLs that match filter_re_pat
-        filter_re = re.compile(filter_re_pat)
-        return sorted([url for url in urls if filter_re.match(url)])

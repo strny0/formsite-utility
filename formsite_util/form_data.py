@@ -1,23 +1,60 @@
 """Defines the FormData base class and its logic"""
+from __future__ import annotations
+import json
 
-from typing import Union
+from typing import Union, List
 from pathlib import Path
+import re
 import pandas as pd
+
 
 # ----
 from formsite_util.error import InvalidItemsStructureException
 from formsite_util.logger import FormsiteLogger
+from formsite_util.form_parser import FormParser
 
 
 class FormData:
     """Formsite API Form object, representing the data"""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, cached_results_path: str = None, cached_items_path: str = None
+    ) -> None:
         """FormsiteFormData constructor"""
         self._labels: dict = None
         self._items: dict = None
         self._data: pd.DataFrame = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
+
+        if cached_results_path:
+            ext = cached_results_path.rsplit(".", 1)[-1]
+            if ext == "parquet":
+                results = pd.read_parquet(cached_results_path)
+            elif ext == "feather":
+                results = pd.read_feather(cached_results_path)
+            elif ext in ("pkl" "pickle"):
+                results = pd.read_pickle(cached_results_path)
+            elif ext == "xlsx":
+                results = pd.read_excel(cached_results_path)
+            elif ext == "hdf":
+                results = pd.read_hdf(cached_results_path, key="data")
+            else:
+                raise ValueError(
+                    f"Invalid extension in results_path, '{ext}' is not a supported serialization format."
+                )
+            self.data = results
+
+        if cached_items_path:
+            with open(cached_items_path, "r", encoding="utf-8") as fp:
+                items = json.load(fp)
+            self.items = items
+            self._update_labels()
+
+    def _update_labels(self):
+        """Updates self.labels (from current self.items) inplace."""
+        if self.items:
+            parser = FormParser()
+            self.labels = parser.create_rename_map(self.items)
 
     @property
     def data(self) -> pd.DataFrame:
@@ -125,3 +162,31 @@ class FormData:
         df = self.data_labels if labels else self.data
         df.to_excel(path, index=False)
         self.logger.debug(f"Form Data: Saved form to file '{path}'")
+
+    def extract_urls(self, filter_re_pat=r".+") -> List[str]:
+        """Extract all URLs of files uploaded to the form
+
+        Args:
+            filter_re_pat (regexp, optional): Output only the URLs that match the input regex. Defaults to r".+".
+
+        Returns:
+            List[str]: List of URLs to files uploaded to the form.
+        """
+        url_re_pat = (
+            rf"(https\:\/\/{self.server}\.formsite\.com\/{self.directory}\/files\/.*)"
+        )
+        url_re = re.compile(url_re_pat)
+        urls = set()
+        for col in self.data.columns:
+            try:
+                url_mask: pd.Index = self.data[col].str.fullmatch(url_re) == True
+                tmp: pd.Series = self.data[url_mask][col]
+                tmp = tmp.str.split("|")
+                tmp = tmp.explode().str.strip()
+                urls = urls.union(tmp.to_list())
+            except AttributeError:
+                pass
+
+        # Return all URLs that match filter_re_pat
+        filter_re = re.compile(filter_re_pat)
+        return sorted([url for url in urls if filter_re.match(url)])
