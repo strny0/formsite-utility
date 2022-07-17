@@ -122,7 +122,6 @@ class FormFetcher:
             )
             with session.get(self.url_items, params=params) as resp:
                 self.handle_response(resp)
-                self.logger.debug(f"Formsite API fetch: {self.form_id} items")
                 return resp.json()
 
     @staticmethod
