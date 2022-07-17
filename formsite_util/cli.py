@@ -10,10 +10,10 @@ from argparse import ArgumentParser, RawTextHelpFormatter, Namespace
 from tqdm.auto import tqdm
 
 # ----
-from formsite_util.form import FormsiteForm
-from formsite_util.list import FormsiteFormsList
-from formsite_util.parameters import FormsiteParameters
-from formsite_util.logger import FormsiteLogger
+from formsite_util._form import FormsiteForm
+from formsite_util._list import FormsiteFormsList
+from formsite_util._parameters import FormsiteParameters
+from formsite_util._logger import FormsiteLogger
 from formsite_util.consts import QUOTE, LINE_TERM, TIMESTAMP
 from formsite_util.__init__ import __version__
 

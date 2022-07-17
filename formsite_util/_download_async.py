@@ -14,7 +14,7 @@ from aiohttp import (
     InvalidURL,
 )
 
-from formsite_util.logger import FormsiteLogger
+from formsite_util._logger import FormsiteLogger
 
 DownloadItem = namedtuple("DownloadItem", ["url", "path", "attempt"])
 

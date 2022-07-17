@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 from requests import Session
-from formsite_util.form_fetcher import FormFetcher
-from formsite_util.logger import FormsiteLogger
+from formsite_util._form_fetcher import FormFetcher
+from formsite_util._logger import FormsiteLogger
 
 
 def readable_filesize(number: int) -> str:

@@ -10,15 +10,19 @@ FormsiteFormsList: Represents the list of all forms for the specified account
 
 FormData: Represents the form data without session
 
-## Low level interfaces
+FormsiteLogger: Custom logger you can connect to your own logging
 
-.logger.FormsiteLogger: Custom logger you can connect to your own logging
+## Internal interfaces
 
-.form_fetcher.FormFetcher: Result/Item fetching operations
+.internal.FormFetcher: Result/Item fetching operations
 
-.form_parser.FormParser: Result/Item parsing operations
+.internal.FormParser: Result/Item parsing operations
 
-## Legacy
+.internal.AsyncFormDownloader: 
+
+.internal.DownloadStatus: 
+
+## Legacy interfaces
 
 .legacy.FormsiteCredentials
 
@@ -27,9 +31,10 @@ FormData: Represents the form data without session
 .legacy.FormsiteParams
 
 """
-__version__ = "2.0.5"
+__version__ = "2.1.0"
 
-from .form import FormsiteForm
-from .list import FormsiteFormsList
-from .parameters import FormsiteParameters
-from .form_data import FormData
+from ._form import FormsiteForm
+from ._list import FormsiteFormsList
+from ._form_data import FormData
+from ._parameters import FormsiteParameters
+from ._logger import FormsiteLogger

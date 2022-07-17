@@ -4,20 +4,19 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from time import sleep
-import re
-from typing import Callable, Generator, List, Optional
+from typing import Callable, Generator, Optional
 import pandas as pd
 from requests import Session
 
 # ----
 from formsite_util.error import FormsiteNoResultsException
-from formsite_util.parameters import FormsiteParameters
-from formsite_util.form_fetcher import FormFetcher
-from formsite_util.form_parser import FormParser
-from formsite_util.download import DownloadStatus, download_sync, filter_urls
-from formsite_util.download_async import AsyncFormDownloader
-from formsite_util.form_data import FormData
-from formsite_util.cache import (
+from formsite_util._parameters import FormsiteParameters
+from formsite_util._form_fetcher import FormFetcher
+from formsite_util._form_parser import FormParser
+from formsite_util._download import DownloadStatus, download_sync, filter_urls
+from formsite_util._download_async import AsyncFormDownloader
+from formsite_util._form_data import FormData
+from formsite_util._cache import (
     items_load,
     items_match_data,
     items_save,
@@ -59,7 +58,7 @@ class FormsiteForm(FormData):
         self.server: server = server
         self.directory: directory = directory
         if prepoulate_data is not None:
-            self._data = prepoulate_data._data
+            self._results = prepoulate_data._results
             self._items = prepoulate_data._items
             self._labels = prepoulate_data._labels
 
@@ -162,18 +161,18 @@ class FormsiteForm(FormData):
                         subset=["id"],
                         keep="first",
                     )
-                    self.data = merged_results
+                    self.results = merged_results
                     results_save(merged_results, cache_results_path)
                 # --- otherwise just use the data we got ---
                 else:
-                    self.data = cached_results
+                    self.results = cached_results
             else:
-                self.data = parser.as_dataframe()
-            tz_shif_inplace(self.data, "date_update", params.timezone)
-            tz_shif_inplace(self.data, "date_start", params.timezone)
-            tz_shif_inplace(self.data, "date_finish", params.timezone)
+                self.results = parser.as_dataframe()
+            tz_shif_inplace(self.results, "date_update", params.timezone)
+            tz_shif_inplace(self.results, "date_start", params.timezone)
+            tz_shif_inplace(self.results, "date_finish", params.timezone)
             if params.last is not None:
-                self.data = self.data.head(params.last)
+                self.results = self.results.head(params.last)
 
         # -!- ITEMS PART
         if fetch_items:
@@ -182,7 +181,7 @@ class FormsiteForm(FormData):
                     raise TypeError("Invalid path")
                 cached_results = items_load(cache_items_path)
                 if cached_results is None or not items_match_data(
-                    cached_results, self.data.columns
+                    cached_results, self.results.columns
                 ):
                     self.logger.debug(
                         f"Cache items {self.form_id}: Fetching new items for cache"

@@ -12,8 +12,8 @@ from formsite_util.error import (
     FormsiteInvalidParameterException,
     FormsiteRateLimitException,
 )
-from formsite_util.logger import FormsiteLogger
-from formsite_util.parameters import FormsiteParameters
+from formsite_util._logger import FormsiteLogger
+from formsite_util._parameters import FormsiteParameters
 from formsite_util.consts import ConnectionError_DELAY, HTTP_429_WAIT_DELAY
 
 

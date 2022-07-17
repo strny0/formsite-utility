@@ -1,81 +1,93 @@
 """Defines the FormData base class and its logic"""
 from __future__ import annotations
 import json
-
-from typing import Union, List
+from os import PathLike
+from typing import Optional, Union, List
 from pathlib import Path
 import re
 import pandas as pd
 
-
 # ----
 from formsite_util.error import InvalidItemsStructureException
-from formsite_util.logger import FormsiteLogger
-from formsite_util.form_parser import FormParser
+from formsite_util._logger import FormsiteLogger
+from formsite_util._form_parser import FormParser
 
 
 class FormData:
     """Formsite API Form object, representing the data"""
 
     def __init__(
-        self, cached_results_path: str = None, cached_items_path: str = None
+        self,
+        results: Optional[Union[pd.DataFrame, PathLike]] = None,
+        items: Optional[Union[dict, PathLike]] = None,
     ) -> None:
-        """FormsiteFormData constructor"""
-        self._labels: dict = None
-        self._items: dict = None
-        self._data: pd.DataFrame = pd.DataFrame()
+        """FormData constructor
+
+        Args:
+            results: Pre-initialize with particular results.
+            items Pre-initalize with particular items. Defaults to None.
+
+        Raises:
+            ValueError: Unsupported cached_results_path serialization format (wrong file extension).
+        """
+        self._labels: dict = {}
+        self._items: dict = {}
+        self._results: pd.DataFrame = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
 
-        if cached_results_path:
-            ext = cached_results_path.rsplit(".", 1)[-1]
+        if isinstance(results, pd.DataFrame):
+            self.results = results
+        elif isinstance(results, str):
+            ext = results.rsplit(".", 1)[-1]
             if ext == "parquet":
-                results = pd.read_parquet(cached_results_path)
+                self.results = pd.read_parquet(results)
             elif ext == "feather":
-                results = pd.read_feather(cached_results_path)
+                self.results = pd.read_feather(results)
             elif ext in ("pkl" "pickle"):
-                results = pd.read_pickle(cached_results_path)
+                self.results = pd.read_pickle(results)
             elif ext == "xlsx":
-                results = pd.read_excel(cached_results_path)
+                self.results = pd.read_excel(results)
             elif ext == "hdf":
-                results = pd.read_hdf(cached_results_path, key="data")
+                self.results = pd.read_hdf(results, key="data")
             else:
                 raise ValueError(
                     f"Invalid extension in results_path, '{ext}' is not a supported serialization format."
                 )
-            self.data = results
 
-        if cached_items_path:
-            with open(cached_items_path, "r", encoding="utf-8") as fp:
-                items = json.load(fp)
+        if isinstance(items, dict):
             self.items = items
+        elif isinstance(items, str):
+            with open(items, "r", encoding="utf-8") as fp:
+                self.items = json.load(fp)
+
+        if self.items is not None:
             self._update_labels()
 
     def _update_labels(self):
         """Updates self.labels (from current self.items) inplace."""
         if self.items:
-            parser = FormParser()
-            self.labels = parser.create_rename_map(self.items)
+            self.labels = FormParser.create_rename_map(self.items)
 
     @property
-    def data(self) -> pd.DataFrame:
+    def results(self) -> pd.DataFrame:
         """Formsite data as pandas DataFrame without items labels
 
         Returns:
-            pd.DataFrame: form data
+            pd.DataFrame: form results
         """
-        return self._data
+        return self._results
 
-    @data.setter
-    def data(self, df) -> None:
-        assert isinstance(df, pd.DataFrame), "Invalid value."
-        self._data = df
+    @results.setter
+    def results(self, df) -> None:
+        assert isinstance(df, pd.DataFrame)
+        self._results = df
 
-    @data.deleter
-    def data(self) -> None:
-        del self._data
+    @results.deleter
+    def results(self) -> None:
+        del self._results
 
     @property
-    def data_labels(self) -> pd.DataFrame:
+    def results_labels(self) -> Optional[pd.DataFrame]:
         """Formsite data as pandas DataFrame with items labels
 
         Returns:
@@ -84,14 +96,14 @@ class FormData:
         if self.labels is None:
             return None
         else:
-            return self._data.rename(columns=self.labels)
+            return self._results.rename(columns=self.labels)
 
-    @data_labels.setter
-    def data_labels(self, *args, **kwargs):
-        raise TypeError("Setting data for data_labels not allowed")
+    @results_labels.setter
+    def results_labels(self, *args, **kwargs):
+        raise TypeError("Setting data_labels is forbidden")
 
-    @data_labels.deleter
-    def data_labels(self):
+    @results_labels.deleter
+    def results_labels(self):
         pass
 
     @property
@@ -144,23 +156,41 @@ class FormData:
     def items(self):
         del self._items
 
-    def to_csv(self, path: str, labels: bool = True, encoding: str = "utf-8-sig") -> None:
-        """Save Formsite form as a csv with reasonable default settings"""
+    def to_csv(
+        self, path: str, labels: bool = True, encoding: str = "utf-8-sig", **kwargs
+    ) -> None:
+        """Save Formsite form as a csv with reasonable default settings.
+
+        Args:
+            path (str): CSV Path or file handle.
+            labels (bool, optional): Save dataframe with results labels if True, otherwise with column IDs. Defaults to True.
+            encoding (str, optional): Text encoding. Defaults to "utf-8-sig".
+            \*\*kwargs: Pandas DataFrame.to_csv kwargs.
+        """
         path = Path(path).resolve().as_posix()
-        df = self.data_labels if labels else self.data
+        df = self.results_labels if labels else self.results
+
+        if "date_format" not in kwargs:
+            kwargs["date_format"] = "%Y-%m-%d %H:%M:%S"
+        if "index" not in kwargs:
+            kwargs["index"] = False
+        if "encoding" not in kwargs:
+            kwargs["encoding"] = encoding
+
         df.to_csv(
             path,
-            date_format="%Y-%m-%d %H:%M:%S",
-            index=False,
-            encoding=encoding,
+            **kwargs,
         )
         self.logger.debug(f"Form Data: Saved form to file '{path}'")
 
-    def to_excel(self, path: str, labels: bool = True) -> None:
+    def to_excel(self, path: str, labels: bool = True, **kwargs) -> None:
         """Save Formsite form as an excel with reasonable default settings (Warning: Slow for large data)"""
         path = Path(path).resolve().as_posix()
-        df = self.data_labels if labels else self.data
-        df.to_excel(path, index=False)
+        df = self.results_labels if labels else self.results
+        if "index" not in kwargs:
+            kwargs["index"] = False
+        df.to_excel(path, **kwargs)
+
         self.logger.debug(f"Form Data: Saved form to file '{path}'")
 
     def extract_urls(self, filter_re_pat=r".+") -> List[str]:
@@ -177,10 +207,10 @@ class FormData:
         )
         url_re = re.compile(url_re_pat)
         urls = set()
-        for col in self.data.columns:
+        for col in self.results.columns:
             try:
-                url_mask: pd.Index = self.data[col].str.fullmatch(url_re) == True
-                tmp: pd.Series = self.data[url_mask][col]
+                url_mask: pd.Index = self.results[col].str.fullmatch(url_re) == True
+                tmp: pd.Series = self.results[url_mask][col]
                 tmp = tmp.str.split("|")
                 tmp = tmp.explode().str.strip()
                 urls = urls.union(tmp.to_list())
@@ -190,3 +220,13 @@ class FormData:
         # Return all URLs that match filter_re_pat
         filter_re = re.compile(filter_re_pat)
         return sorted([url for url in urls if filter_re.match(url)])
+
+    def __repr__(self) -> str:
+        if self.results is not None and self.items is not None:
+            return f"<{self.__class__.__name__} with results and items>"
+        elif self.results is not None:
+            return f"<{self.__class__.__name__} with results>"
+        elif self.items is not None:
+            return f"<{self.__class__.__name__} with items>"
+        else:
+            return f"<{self.__class__.__name__} empty>"

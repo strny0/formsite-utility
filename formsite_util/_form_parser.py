@@ -4,7 +4,7 @@ from itertools import chain
 import re
 import pandas as pd
 
-from formsite_util.logger import FormsiteLogger
+from formsite_util._logger import FormsiteLogger
 from formsite_util.consts import METADATA_COLS
 
 
