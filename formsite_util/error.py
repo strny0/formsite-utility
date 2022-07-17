@@ -31,7 +31,7 @@ class FormsiteInternalException(HTTPError):
     """Unexpected error on FormSite servers (HTTP 5xx)"""
 
 
-class FormsiteForbiddenException(HTTPError):
+class FormsiteAuthorizationException(HTTPError):
     """HTTP 403 Error"""
 
 

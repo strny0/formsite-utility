@@ -6,7 +6,7 @@ from math import ceil
 from requests import Session, Response, HTTPError
 from requests.exceptions import ConnectionError as requests_ConnectionError
 from formsite_util.error import (
-    FormsiteForbiddenException,
+    FormsiteAuthorizationException,
     FormsiteFormNotFoundException,
     FormsiteInternalException,
     FormsiteInvalidAuthenticationException,
@@ -135,7 +135,7 @@ class FormFetcher:
                 "Please check if token, directory and server are correct",
             )
         elif response.status_code == 403:  # Forbidden.
-            raise FormsiteForbiddenException(response.text)
+            raise FormsiteAuthorizationException(response.text)
         elif response.status_code == 404:  # Path or object not found.
             raise FormsiteFormNotFoundException(response.text)
         elif response.status_code == 422:  # Invalid parameter.
