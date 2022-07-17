@@ -4,7 +4,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from time import sleep
-from typing import Callable, Generator, Optional
+import re
+from typing import Callable, Generator, List, Optional, Protocol, Set, runtime_checkable
 import pandas as pd
 from requests import Session
 
@@ -24,11 +25,15 @@ from formsite_util._cache import (
     results_save,
 )
 
+@runtime_checkable
+class FormCallback(Protocol):
+    def __call__(self, page: int, total_pages: int, data: dict) -> None:
+        ...
 
 def tz_shif_inplace(df: pd.DataFrame, col: str, tz_name: str):
     """Converts a tz-aware dataframe column to target timezone"""
     if col in df:
-        df[col] = df[col].dt.tz_convert(tz=tz_name)
+        df[col] = df[col].dt.tz_convert(tz=tz_name)  # type: ignore
 
 
 class FormsiteForm(FormData):
@@ -55,8 +60,9 @@ class FormsiteForm(FormData):
         super().__init__()
         self.form_id: str = form_id
         self.token: str = token
-        self.server: server = server
-        self.directory: directory = directory
+        self.server: str = server
+        self.directory: str = directory
+        self._is_fetched: bool = False
         if prepoulate_data is not None:
             self._results = prepoulate_data._results
             self._items = prepoulate_data._items
@@ -65,7 +71,10 @@ class FormsiteForm(FormData):
         self.logger.debug(f"Initialized {repr(self)}")
 
     def __repr__(self) -> str:
-        return f"<{type(self).__name__} {self.form_id}>"
+        if self._is_fetched:
+            return f"<{type(self).__name__} {self.form_id} [fetched]>"
+        else:
+            return f"<{type(self).__name__} {self.form_id}>"
 
     def fetch(
         self,
@@ -74,7 +83,7 @@ class FormsiteForm(FormData):
         params: FormsiteParameters = FormsiteParameters(),
         result_labels_id: int = None,
         fetch_delay: float = 3.0,
-        fetch_callback: Callable = None,
+        fetch_callback: FormCallback = None,
         # ---
         cache_items_path: str = None,
         cache_results_path: str = None,
@@ -141,7 +150,7 @@ class FormsiteForm(FormData):
                 # --- regular case ---
                 parser.feed(data)
                 # --- callback ---
-                if isinstance(fetch_callback, Callable):
+                if fetch_callback is not None and isinstance(fetch_callback, FormCallback):
                     fetch_callback(fetcher.cur_page, fetcher.total_pages, data)
                 # --- fetch delay ---
                 sleep(fetch_delay)
@@ -179,19 +188,19 @@ class FormsiteForm(FormData):
             if cache_items_path is not None:
                 if not isinstance(cache_items_path, str):
                     raise TypeError("Invalid path")
-                cached_results = items_load(cache_items_path)
-                if cached_results is None or not items_match_data(
-                    cached_results, self.results.columns
-                ):
+                cached_items = items_load(cache_items_path)
+                if cached_results is None or not items_match_data(cached_items, self.results.columns):  # type: ignore
                     self.logger.debug(
                         f"Cache items {self.form_id}: Fetching new items for cache"
                     )
-                    cached_results = fetcher.fetch_items(result_labels_id)
-                    items_save(cached_results, cache_items_path)
-                self.items = cached_results
+                    cached_items = fetcher.fetch_items(result_labels_id)
+                    items_save(cached_items, cache_items_path)
+                self.items = cached_items
             else:
                 self.items = fetcher.fetch_items(result_labels_id)
             self._update_labels()
+
+        self._is_fetched = True  # set marker for __repr__
 
     def downloader(
         self,
@@ -288,3 +297,31 @@ class FormsiteForm(FormData):
         )
         # ----
         return downloader
+
+    def extract_urls(self, filter_re_pat=r".+") -> List[str]:
+        """Extract all URLs of files uploaded to the form
+
+        Args:
+            filter_re_pat (regexp, optional): Output only the URLs that match the input regex. Defaults to r".+".
+
+        Returns:
+            List[str]: List of URLs to files uploaded to the form.
+        """
+        url_re_pat = (
+            rf"(https\:\/\/{self.server}\.formsite\.com\/{self.directory}\/files\/.*)"
+        )
+        url_re = re.compile(url_re_pat)
+        urls: Set[str] = set()
+        for col in self.results.columns:
+            try:
+                url_mask: pd.Index = self.results[col].str.fullmatch(url_re) == True
+                tmp: pd.Series = self.results[url_mask][col]
+                tmp = tmp.str.split("|")
+                tmp = tmp.explode().str.strip()
+                urls = urls.union(tmp.to_list())
+            except AttributeError:
+                pass
+
+        # Return all URLs that match filter_re_pat
+        filter_re = re.compile(filter_re_pat)
+        return sorted([url for url in urls if filter_re.match(url)])

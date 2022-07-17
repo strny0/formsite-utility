@@ -5,7 +5,7 @@ import os
 from collections import namedtuple
 import asyncio
 import shutil
-from typing import Callable, List, Optional, Set
+from typing import Callable, List, Optional, Protocol, Set, Tuple, Union, runtime_checkable
 from aiohttp import (
     ClientSession,
     ClientTimeout,
@@ -15,6 +15,11 @@ from aiohttp import (
 )
 
 from formsite_util._logger import FormsiteLogger
+
+@runtime_checkable
+class AsyncDownloaderCallback(Protocol):
+    def __call__(self, url: str, filepath: str, total_files: int) -> None:
+        ...
 
 DownloadItem = namedtuple("DownloadItem", ["url", "path", "attempt"])
 
@@ -26,11 +31,11 @@ class AsyncFormDownloader:
     def __init__(
         self,
         download_dir: str,
-        sorted_urls: List[str, str],
+        sorted_urls: List[Tuple[str, str]],
         workers: int = 5,
-        timeout: int = 160,
+        timeout: Union[int, float] = 160,
         max_attempts: int = 1,
-        callback: Optional[Callable] = None,
+        callback: Optional[AsyncDownloaderCallback] = None,
     ) -> None:
         """AsyncFormDownloader constructor
 
@@ -54,7 +59,7 @@ class AsyncFormDownloader:
         self.logger: FormsiteLogger = FormsiteLogger()
         # ----
         self.semaphore = asyncio.Semaphore(self.workers)
-        self.dl_queue = asyncio.Queue()
+        self.dl_queue: asyncio.Queue = asyncio.Queue()
         self.internal_state = DownloadWorkerState(
             self.url_path_list,
             self.workers,
@@ -91,7 +96,7 @@ class DownloadWorkerState:
 
     def __init__(
         self,
-        url_path_list: List[str, str],
+        url_path_list: List[Tuple[str, str]],
         num_workers: int,
         callback: Optional[Callable] = None,
     ) -> None:
@@ -167,7 +172,7 @@ class DownloadWorker:
         semaphore: asyncio.Semaphore,
         session: ClientSession,
         internal_state: DownloadWorkerState,
-        timeout: int = 160,
+        timeout: Union[int, float] = 160,
         max_attempts: int = 3,
     ) -> None:
         # ----
@@ -183,7 +188,7 @@ class DownloadWorker:
         self.callback = internal_state.callback
         self.client_timeout = ClientTimeout(total=timeout)
 
-    async def run(self) -> int:
+    async def run(self):
         """Entrypoint for launching the download process."""
         while True:
             try:
@@ -203,12 +208,7 @@ class DownloadWorker:
                 self.semaphore.release()
                 self.internal_state.end_iteration()
 
-    async def _fetch(
-        self,
-        url: str,
-        path: str,
-        chunk_size: int = 4 * 1024,
-    ) -> bool:
+    async def _fetch(self, url: str, path: str, chunk_size: int = 4 * 1024):
         """The core download function with `session.get` request."""
         async with self.session.get(url, timeout=self.client_timeout) as response:
             response.raise_for_status()

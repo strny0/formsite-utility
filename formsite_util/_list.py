@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 from pathlib import Path
+from typing import Union
 import pandas as pd
 from requests import Session
 from formsite_util._form_fetcher import FormFetcher
 from formsite_util._logger import FormsiteLogger
 
 
-def readable_filesize(number: int) -> str:
+def readable_filesize(number: Union[int, float]) -> str:
     """Converts a number (filesize in bytes) to more readable filesize with units."""
     if number is None:
         return None

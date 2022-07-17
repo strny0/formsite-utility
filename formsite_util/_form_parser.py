@@ -2,6 +2,7 @@
 
 from itertools import chain
 import re
+from typing import List
 import pandas as pd
 
 from formsite_util._logger import FormsiteLogger
@@ -47,7 +48,7 @@ class FormParser:
     """Parses result json into a pandas dataframe"""
 
     def __init__(self) -> None:
-        self.data = []
+        self.data: List[dict] = []
         self.children_item_re = re.compile(r"(\d+?-\d+?-\d+?)")
         self.logger: FormsiteLogger = FormsiteLogger()
 
@@ -88,7 +89,7 @@ class FormParser:
             _parse_date_col_inplace(df, "date_finish")
         return df
 
-    def as_records(self) -> pd.DataFrame:
+    def as_records(self) -> List[dict]:
         """Return data fed into the parser so far as a 1 json records object"""
         return list(chain(self.data))
 

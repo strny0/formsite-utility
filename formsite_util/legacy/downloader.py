@@ -29,7 +29,7 @@ class _FormsiteDownloader:
     """Handles the distribution of downlaod tasks across DownloadWorkers."""
 
     download_folder: str
-    links: Iterable[str]
+    links: Set[str]
     max_concurrent_downloads: int = 10
     timeout: int = 80
     retries: int = 1
@@ -59,7 +59,7 @@ class _FormsiteDownloader:
 
     async def Start(self) -> None:
         """Starts download of links."""
-        pbar = (
+        pbar: Optional[tqdm] = (
             tqdm(
                 total=len(self.links),
                 desc="Downloading files",
@@ -222,7 +222,7 @@ class DownloadWorker:
     internal_state: DownloadWorkerState
     timeout: int = 80
     retries: int = 1
-    pbar: tqdm = None
+    pbar: Optional[tqdm] = None
     filename_regex: str = r""
     strip_prefix: bool = False
 
@@ -272,7 +272,7 @@ class DownloadWorker:
         )
         async with self.session.get(url, timeout=self.client_timeout) as response:
             response.raise_for_status()
-            pbar = (
+            pbar: Optional[tqdm] = (
                 tqdm(
                     desc=display_name,
                     total=response.content_length,
@@ -335,7 +335,7 @@ class DownloadWorker:
     def _update_pbar(self, desc: str = ""):
         """Updates main download progress bar with a provided description."""
         if isinstance(self.pbar, tqdm):
-            self.pbar.set_description(desc=desc, refresh=True)
+            self.pbar.set_description(desc=desc, refresh=True) # type: ignore
 
     def get_filename(self, url: str) -> Tuple[str, str]:
         """Gets filename from url. Returns filename and path+filename as target."""

@@ -3,7 +3,7 @@
 import os
 import re
 import shutil
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 from urllib.parse import urlparse
 from requests import Session
 from formsite_util.error import FormsiteFileDownloadException
@@ -43,17 +43,6 @@ def url_basename(url: str) -> str:
     """Extracts the filename from a url"""
     return os.path.basename(urlparse(url).path)
 
-
-def truncate_filename(fn: str, max_len: int = 25, end_peek: int = 5) -> str:
-    """Return a truncated version of the filename"""
-    if fn(fn) > max_len:
-        out = fn[: max_len - end_peek] + "…" + fn[-end_peek:]
-    else:
-        out = fn[:max_len]
-
-    return out
-
-
 def strip_prefix_filename(filename: str):
     """Removes `f-xxx-xxx-` prefix from a filename, leaving only ref_filename.ext"""
     return FS_PREFIX_PAT.sub(r"", filename)
@@ -65,10 +54,10 @@ def filter_urls(
     strip_prefix: bool = False,
     filename_substitution_re_pat: str = r"",
     overwrite_existing: bool = True,
-) -> List[Tuple[str, str, str]]:
+) -> List[Tuple[str, str]]:
     """Filter list of URLs and filenames based on input filters. Returns list of (url, filename, path)"""
     filtered_URLs = []
-    filename_dict = {}
+    filename_dict: Dict[str, List[str]] = {}
     ls = os.listdir(download_dir)
     subsitution_pattern = re.compile(filename_substitution_re_pat)
     # 1st pass - filter URLs
@@ -102,7 +91,7 @@ def download_sync(
     session: Session,
     timeout: float = 160.0,
     max_attempts: int = 3,
-) -> None:
+) -> DownloadStatus:
     """Performs the download of 1 file to path. Performs error handling."""
     status = DownloadStatus(False, url, path)
     for attempt in range(1, max_attempts + 1):

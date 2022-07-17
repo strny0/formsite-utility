@@ -147,7 +147,7 @@ class _FormsiteAPI:
                 self._update_pbar_desc(
                     desc=f"Delay [{self.long_delay:0.0f} s] ({(page-1)*500}-{page*500})"
                 )
-                _ = time.sleep(max(self.long_delay - self.short_delay, 0))
+                time.sleep(max(self.long_delay - self.short_delay, 0))
             else:
                 self._update_pbar_desc(
                     desc=f"Delay [{self.short_delay:0.0f} s] ({(page-1)*500}-{page*500})"
@@ -184,7 +184,7 @@ class _FormsiteAPI:
 
     def _update_pbar_total(self, n: int) -> None:
         if isinstance(self.pbar, tqdm):
-            self.pbar.total = n
+            self.pbar.total = n # type: ignore
 
     def _update_pbar_progress(self) -> None:
         if isinstance(self.pbar, tqdm):
@@ -192,4 +192,4 @@ class _FormsiteAPI:
 
     def _update_pbar_desc(self, desc: str) -> None:
         if isinstance(self.pbar, tqdm):
-            self.pbar.set_description(desc=desc, refresh=True)
+            self.pbar.set_description(desc=desc, refresh=True) # type: ignore

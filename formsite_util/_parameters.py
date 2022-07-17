@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 from datetime import datetime as dt
 import pytz
 
@@ -53,11 +53,11 @@ class FormsiteParameters:
     before_id: Optional[int] = None
     after_date: Optional[Union[str, dt]] = None
     before_date: Optional[Union[str, dt]] = None
-    timezone: Optional[str] = "Etc/UTC"
+    timezone: str = "Etc/UTC"
     resultsview: Optional[int] = 11
     sort: Optional[str] = "desc"
 
-    def as_dict(self, single_page_limit: int = 500) -> dict:
+    def as_dict(self, single_page_limit: int = 500) -> Dict[str, Union[str, int, dt]]:
         """Generates a parameters dictionary that is later passed to params= kw argument when making API calls.
 
         Args:
@@ -66,7 +66,7 @@ class FormsiteParameters:
         Returns:
             dict: params dict
         """
-        results_params: dict[str, Union[str, int]] = dict()
+        results_params: Dict[str, Union[str, int, dt]] = {}
         results_params["page"] = 1
         results_params["limit"] = single_page_limit
         if self.after_id is not None:
@@ -78,7 +78,7 @@ class FormsiteParameters:
             date = shift_date_from_tz_to_utc(date, self.timezone)
             results_params["after_date"] = date
         if self.before_date is not None:
-            date = try_parse_date(self.after_date)
+            date = try_parse_date(self.before_date)
             date = shift_date_from_tz_to_utc(date, self.timezone)
             results_params["before_date"] = date
         if self.resultsview is not None:  # 11 = all items + statistics results view

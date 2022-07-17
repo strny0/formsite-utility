@@ -7,18 +7,19 @@ import os
 from pathlib import Path
 from datetime import datetime as dt
 from argparse import ArgumentParser, RawTextHelpFormatter, Namespace
+from typing import Optional
 from tqdm.auto import tqdm
 
 # ----
-from formsite_util._form import FormsiteForm
+from formsite_util._form import FormsiteForm, FormCallback
 from formsite_util._list import FormsiteFormsList
 from formsite_util._parameters import FormsiteParameters
 from formsite_util._logger import FormsiteLogger
 from formsite_util.consts import QUOTE, LINE_TERM, TIMESTAMP
 from formsite_util.__init__ import __version__
 
-_FETCH_PBAR = None
-_DOWNLOAD_PBAR = None
+_FETCH_PBAR: Optional[tqdm] = None
+_DOWNLOAD_PBAR: Optional[tqdm] = None
 
 
 def main():
@@ -115,6 +116,8 @@ def save_output(args: Namespace, form: FormsiteForm):
     str_path = path.as_posix()
     ext = str_path.rsplit(".", 1)[-1].lower()
     df = form.results_labels if args.use_items else form.results
+    if df is None:
+        raise ValueError("Input parameters fetched empty data.")
     if ext == "xlsx":
         # Write to excel with reasonable default settings
         df.to_excel(str_path, encoding="utf-8", index=False)
@@ -143,13 +146,9 @@ def save_output(args: Namespace, form: FormsiteForm):
 
 def save_latest_id(args: Namespace, form: FormsiteForm):
     """Write latest Reference # to a file (if it exists)"""
-    m = None
-    if form.uses_items is False and "id" in form.results.columns:
-        m = max(form.results["id"])
-    elif form.uses_items is True and "Reference #" in form.results.columns:
-        m = max(form.results["Reference #"])
 
-    if m is not None:
+    if "id" in form.results.columns:
+        m = max(form.results["id"])
         with open(args.latest_id, "w", encoding="utf-8") as fp:
             fp.write(f"{m}\n")
 
@@ -196,6 +195,7 @@ def save_download(args: Namespace, form: FormsiteForm, loop: asyncio.AbstractEve
 
 def fetch_pbar_callback(page: int, total_pages: int, data: dict) -> None:
     """Updates fetch progress bar (if enabled)"""
+    global _FETCH_PBAR
     if _FETCH_PBAR is None:
         return
     _FETCH_PBAR.total = total_pages
@@ -204,6 +204,7 @@ def fetch_pbar_callback(page: int, total_pages: int, data: dict) -> None:
 
 def download_pbar_callback(url: str, filepath: str, total_files: int) -> None:
     """Updates download progress bar (if enabled)"""
+    global _DOWNLOAD_PBAR
     if _DOWNLOAD_PBAR is None:
         return
     _DOWNLOAD_PBAR.total = total_files

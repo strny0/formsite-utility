@@ -1,13 +1,13 @@
 """Defines utility functions for caching form items and form results."""
 
-from typing import Optional
+from typing import Optional, Union
 import json
 import pandas as pd
 
 from formsite_util.consts import METADATA_COLS
 
 
-def items_load(path: str) -> Optional[dict]:
+def items_load(path: str) -> Union[dict, None]:
     """Attempts to load items from a file
 
     Args:

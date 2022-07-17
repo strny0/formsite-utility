@@ -1,7 +1,7 @@
 """Defines the FormFetcher object and its logic."""
 
 from time import sleep
-from typing import Generator
+from typing import Dict, Generator, Optional
 from requests import Session, Response, HTTPError
 from requests.exceptions import ConnectionError as requests_ConnectionError
 from formsite_util.error import (
@@ -42,12 +42,12 @@ class FormFetcher:
         self.results_params = params.as_dict()
         # ----
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
-        self.url_results = f"{self.url_base}/forms/{self.form_id}/results"
-        self.url_items = f"{self.url_base}/forms/{self.form_id}/items"
-        self.auth_header = {"Authorization": f"bearer {token}"}
+        self.url_results: str = f"{self.url_base}/forms/{self.form_id}/results"
+        self.url_items: str = f"{self.url_base}/forms/{self.form_id}/items"
+        self.auth_header: Dict[str, str] = {"Authorization": f"bearer {token}"}
         # ----
-        self.total_pages = 1
-        self.cur_page = 1
+        self.total_pages: int = 1
+        self.cur_page: int = 1
         self.logger: FormsiteLogger = FormsiteLogger()
 
     def __repr__(self) -> str:
@@ -66,10 +66,10 @@ class FormFetcher:
             while True:
                 try:
                     if self.cur_page > self.total_pages:
-                        return StopIteration
+                        raise StopIteration
                     resp = self.fetch_result(self.cur_page, session)
                     self.handle_response(resp)
-                    self.total_pages = int(resp.headers.get("Pagination-Page-Last"))
+                    self.total_pages = int(resp.headers.get("Pagination-Page-Last", 0))
                     self.logger.debug(
                         f"Formsite API fetch {self.form_id} results | {self.cur_page}/{self.total_pages}"
                     )
@@ -94,7 +94,7 @@ class FormFetcher:
         params = self.results_params.copy()
         params["page"] = page
         try:
-            with session.get(self.url_results, params=params) as resp:
+            with session.get(self.url_results, params=params) as resp: # type: ignore
                 return resp
         except requests_ConnectionError:
             self.logger.critical(

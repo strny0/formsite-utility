@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 from os import PathLike
-from typing import Optional, Union, List
+from typing import Dict, Optional, Union, List
 from pathlib import Path
 import re
 import pandas as pd
@@ -125,20 +125,23 @@ class FormData:
         del self._labels
 
     @property
-    def items(self) -> Union[list, None]:
+    def items(self) -> Optional[Dict[str, dict]]:
         """Form's result labels object
 
         Items structure:
             Dictonary with object 'items' [...item...]
             Each item has an `id`, `label` and `position` records
 
+        ```json
         { "items": [
-                {'id': '100', 'label': 'label_text', 'position': 1}, ...
+                {'id': '100', 'label': 'label_text', 'position': 1},
+                ...
             ]
         }
+        ```
 
         Returns:
-            List of records or None if not fetched.
+            List of records (dicts) or None if not fetched.
         """
 
         return self._items
@@ -169,6 +172,9 @@ class FormData:
         """
         path = Path(path).resolve().as_posix()
         df = self.results_labels if labels else self.results
+        
+        if df is None:
+            raise ValueError("Form doesn't have items defined. It is impossible to create results_labels")
 
         if "date_format" not in kwargs:
             kwargs["date_format"] = "%Y-%m-%d %H:%M:%S"
@@ -187,39 +193,13 @@ class FormData:
         """Save Formsite form as an excel with reasonable default settings (Warning: Slow for large data)"""
         path = Path(path).resolve().as_posix()
         df = self.results_labels if labels else self.results
+        if df is None:
+            raise ValueError("Form doesn't have items defined. It is impossible to create results_labels")
         if "index" not in kwargs:
             kwargs["index"] = False
         df.to_excel(path, **kwargs)
 
         self.logger.debug(f"Form Data: Saved form to file '{path}'")
-
-    def extract_urls(self, filter_re_pat=r".+") -> List[str]:
-        """Extract all URLs of files uploaded to the form
-
-        Args:
-            filter_re_pat (regexp, optional): Output only the URLs that match the input regex. Defaults to r".+".
-
-        Returns:
-            List[str]: List of URLs to files uploaded to the form.
-        """
-        url_re_pat = (
-            rf"(https\:\/\/{self.server}\.formsite\.com\/{self.directory}\/files\/.*)"
-        )
-        url_re = re.compile(url_re_pat)
-        urls = set()
-        for col in self.results.columns:
-            try:
-                url_mask: pd.Index = self.results[col].str.fullmatch(url_re) == True
-                tmp: pd.Series = self.results[url_mask][col]
-                tmp = tmp.str.split("|")
-                tmp = tmp.explode().str.strip()
-                urls = urls.union(tmp.to_list())
-            except AttributeError:
-                pass
-
-        # Return all URLs that match filter_re_pat
-        filter_re = re.compile(filter_re_pat)
-        return sorted([url for url in urls if filter_re.match(url)])
 
     def __repr__(self) -> str:
         if self.results is not None and self.items is not None:
