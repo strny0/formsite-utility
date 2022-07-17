@@ -8,7 +8,6 @@ from pathlib import Path
 from datetime import datetime as dt
 from argparse import ArgumentParser, RawTextHelpFormatter, Namespace
 from tqdm.auto import tqdm
-import pandas as pd
 
 # ----
 from formsite_util.form import FormsiteForm
@@ -115,7 +114,7 @@ def save_output(args: Namespace, form: FormsiteForm):
     os.makedirs(path.parent.as_posix(), exist_ok=True)
     str_path = path.as_posix()
     ext = str_path.rsplit(".", 1)[-1].lower()
-    df = form.data_labels if args.use_items else form.data
+    df = form.results_labels if args.use_items else form.results
     if ext == "xlsx":
         # Write to excel with reasonable default settings
         df.to_excel(str_path, encoding="utf-8", index=False)
@@ -145,10 +144,10 @@ def save_output(args: Namespace, form: FormsiteForm):
 def save_latest_id(args: Namespace, form: FormsiteForm):
     """Write latest Reference # to a file (if it exists)"""
     m = None
-    if form.uses_items is False and "id" in form.data.columns:
-        m = max(form.data["id"])
-    elif form.uses_items is True and "Reference #" in form.data.columns:
-        m = max(form.data["Reference #"])
+    if form.uses_items is False and "id" in form.results.columns:
+        m = max(form.results["id"])
+    elif form.uses_items is True and "Reference #" in form.results.columns:
+        m = max(form.results["Reference #"])
 
     if m is not None:
         with open(args.latest_id, "w", encoding="utf-8") as fp:

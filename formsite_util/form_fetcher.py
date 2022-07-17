@@ -2,7 +2,6 @@
 
 from time import sleep
 from typing import Generator
-from math import ceil
 from requests import Session, Response, HTTPError
 from requests.exceptions import ConnectionError as requests_ConnectionError
 from formsite_util.error import (
