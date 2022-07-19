@@ -25,10 +25,12 @@ from formsite_util._cache import (
     results_save,
 )
 
+
 @runtime_checkable
 class FormCallback(Protocol):
     def __call__(self, page: int, total_pages: int, data: dict) -> None:
         ...
+
 
 def tz_shif_inplace(df: pd.DataFrame, col: str, tz_name: str):
     """Converts a tz-aware dataframe column to target timezone"""
@@ -137,9 +139,8 @@ class FormsiteForm(FormData):
                     self.logger.debug(
                         f"Cache results {self.form_id}: Overwriting after_id:{max(cached_results['id'])} | before_id:None"
                     )
-                    params.after_id = max(cached_results["id"])
-                    params.before_id = None
-                    fetcher.params = params
+                    fetcher.params.after_id = int(max(cached_results["id"]))
+                    fetcher.params.before_id = None
             # -!!- perform results fetch -!!-
             for data in fetcher.fetch_iterator():
                 # --- edge case ---
@@ -150,7 +151,9 @@ class FormsiteForm(FormData):
                 # --- regular case ---
                 parser.feed(data)
                 # --- callback ---
-                if fetch_callback is not None and isinstance(fetch_callback, FormCallback):
+                if fetch_callback is not None and isinstance(
+                    fetch_callback, FormCallback
+                ):
                     fetch_callback(fetcher.cur_page, fetcher.total_pages, data)
                 # --- fetch delay ---
                 sleep(fetch_delay)
@@ -170,18 +173,18 @@ class FormsiteForm(FormData):
                         subset=["id"],
                         keep="first",
                     )
-                    self.results = merged_results
+                    self._results = merged_results
                     results_save(merged_results, cache_results_path)
                 # --- otherwise just use the data we got ---
                 else:
-                    self.results = cached_results
+                    self._results = cached_results
             else:
-                self.results = parser.as_dataframe()
-            tz_shif_inplace(self.results, "date_update", params.timezone)
-            tz_shif_inplace(self.results, "date_start", params.timezone)
-            tz_shif_inplace(self.results, "date_finish", params.timezone)
+                self._results = parser.as_dataframe()
+            tz_shif_inplace(self._results, "date_update", params.timezone)
+            tz_shif_inplace(self._results, "date_start", params.timezone)
+            tz_shif_inplace(self._results, "date_finish", params.timezone)
             if params.last is not None:
-                self.results = self.results.head(params.last)
+                self._results = self._results.head(params.last)
 
         # -!- ITEMS PART
         if fetch_items:
@@ -189,7 +192,9 @@ class FormsiteForm(FormData):
                 if not isinstance(cache_items_path, str):
                     raise TypeError("Invalid path")
                 cached_items = items_load(cache_items_path)
-                if cached_results is None or not items_match_data(cached_items, self.results.columns):  # type: ignore
+                if cached_items is None or not items_match_data(
+                    cached_items, self._results.columns
+                ):
                     self.logger.debug(
                         f"Cache items {self.form_id}: Fetching new items for cache"
                     )
@@ -202,7 +207,7 @@ class FormsiteForm(FormData):
 
         self._is_fetched = True  # set marker for __repr__
 
-    def downloader(
+    def download_iterator(
         self,
         download_dir: str,
         timeout: float = 160,
@@ -215,7 +220,7 @@ class FormsiteForm(FormData):
         """Download files uploaded to the form via the File upload control (sequential)
 
         Generator yields:
-            4-tuple of (url: str, filename: str, path: str, status: DownloadStatus)
+            formsite_util.internal.DownloadStatus objects
 
         Args:
             download_dir (str): Directory to download files into. Gets created if it doesn't exist.
@@ -225,7 +230,14 @@ class FormsiteForm(FormData):
             filename_substitution_re_pat (str): Remove all charactes that match the regex. Defaults to r"".
             strip_prefix (bool): Strip the f-xxx-xxx-  or sig-xxx-xxx- prefix from filenames. Defaults to False.
             overwrite_existing (bool): Check download directory for files. If they already exist, don't download them. Defaults to True.
-        """
+        
+        Example:
+        ```python
+            for file in form.download_iterator('./download_path'):
+                path = file.path
+                # do something...
+        ``` 
+        """ 
         download_dir = Path(download_dir).resolve().as_posix()
         os.makedirs(download_dir, exist_ok=True)
         urls = self.extract_urls(url_filter_re)
@@ -312,10 +324,10 @@ class FormsiteForm(FormData):
         )
         url_re = re.compile(url_re_pat)
         urls: Set[str] = set()
-        for col in self.results.columns:
+        for col in self._results.columns:
             try:
-                url_mask: pd.Index = self.results[col].str.fullmatch(url_re) == True
-                tmp: pd.Series = self.results[url_mask][col]
+                url_mask: pd.Index = self._results[col].str.fullmatch(url_re) == True
+                tmp: pd.Series = self._results[url_mask][col]
                 tmp = tmp.str.split("|")
                 tmp = tmp.explode().str.strip()
                 urls = urls.union(tmp.to_list())

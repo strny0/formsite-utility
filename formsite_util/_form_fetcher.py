@@ -39,7 +39,6 @@ class FormFetcher:
         """
         self.form_id = form_id
         self.params = params
-        self.results_params = params.as_dict()
         # ----
         self.url_base: str = f"https://{server}.formsite.com/api/v2/{directory}"
         self.url_results: str = f"{self.url_base}/forms/{self.form_id}/results"
@@ -66,7 +65,7 @@ class FormFetcher:
             while True:
                 try:
                     if self.cur_page > self.total_pages:
-                        raise StopIteration
+                        return StopIteration # type: ignore
                     resp = self.fetch_result(self.cur_page, session)
                     self.handle_response(resp)
                     self.total_pages = int(resp.headers.get("Pagination-Page-Last", 0))
@@ -91,10 +90,10 @@ class FormFetcher:
         Returns:
             Response: Closed requests.Response object
         """
-        params = self.results_params.copy()
-        params["page"] = page
+        api_params = self.params.as_dict()
+        api_params["page"] = page
         try:
-            with session.get(self.url_results, params=params) as resp: # type: ignore
+            with session.get(self.url_results, params=api_params) as resp: # type: ignore
                 return resp
         except requests_ConnectionError:
             self.logger.critical(

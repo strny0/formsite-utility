@@ -35,33 +35,33 @@ class FormData:
         self._results: pd.DataFrame = pd.DataFrame()
         self.logger: FormsiteLogger = FormsiteLogger()
 
+        if isinstance(items, dict):
+            self._items = items
+        elif isinstance(items, str):
+            with open(items, "r", encoding="utf-8") as fp:
+                self._items = json.load(fp)
+
+        if self.items is not None:
+            self._update_labels()
+
         if isinstance(results, pd.DataFrame):
-            self.results = results
+            self._results = results
         elif isinstance(results, str):
             ext = results.rsplit(".", 1)[-1]
             if ext == "parquet":
-                self.results = pd.read_parquet(results)
+                self._results = pd.read_parquet(results)
             elif ext == "feather":
-                self.results = pd.read_feather(results)
+                self._results = pd.read_feather(results)
             elif ext in ("pkl" "pickle"):
-                self.results = pd.read_pickle(results)
+                self._results = pd.read_pickle(results)
             elif ext == "xlsx":
-                self.results = pd.read_excel(results)
+                self._results = pd.read_excel(results)
             elif ext == "hdf":
-                self.results = pd.read_hdf(results, key="data")
+                self._results = pd.read_hdf(results, key="data")
             else:
                 raise ValueError(
                     f"Invalid extension in results_path, '{ext}' is not a supported serialization format."
                 )
-
-        if isinstance(items, dict):
-            self.items = items
-        elif isinstance(items, str):
-            with open(items, "r", encoding="utf-8") as fp:
-                self.items = json.load(fp)
-
-        if self.items is not None:
-            self._update_labels()
 
     def _update_labels(self):
         """Updates self.labels (from current self.items) inplace."""
@@ -78,8 +78,13 @@ class FormData:
         return self._results
 
     @results.setter
-    def results(self, df) -> None:
+    def results(self, df: pd.DataFrame) -> None:
         assert isinstance(df, pd.DataFrame)
+        if isinstance(self._items, dict):
+            self._update_labels()
+            a = set(self._labels.keys())
+            b = set(df.columns)
+            assert a == b, "Items don't match dataframe columns."
         self._results = df
 
     @results.deleter
@@ -100,11 +105,16 @@ class FormData:
 
     @results_labels.setter
     def results_labels(self, *args, **kwargs):
-        raise TypeError("Setting data_labels is forbidden")
+        raise TypeError("Setting data_labels is forbidden, use _update_labels() method instead.")
 
     @results_labels.deleter
     def results_labels(self):
-        pass
+        del self._labels
+
+
+    # Kept for compatibility reasons
+    data = results
+    data_labels = results_labels
 
     @property
     def labels(self) -> dict:
