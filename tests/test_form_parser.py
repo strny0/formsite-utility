@@ -1,6 +1,6 @@
 import json
 import pandas as pd
-from formsite_util.form_parser import FormParser
+from formsite_util._form_parser import FormParser
 from tests.util import create_example_results, create_example_items, INPUTS_DIR
 
 

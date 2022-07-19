@@ -6,14 +6,14 @@ from tests.util import (
     OUTPUTS_DIR,
     create_example_results,
 )
-from formsite_util.cache import (
+from formsite_util._cache import (
     items_load,
     items_match_data,
     items_save,
     results_load,
     results_save,
 )
-from formsite_util.form_parser import FormParser
+from formsite_util._form_parser import FormParser
 
 
 def test_items_match_data_exact():

@@ -1,16 +1,81 @@
+import json
 from math import ceil
 from pathlib import Path
-
+from random import random
+from typing import Dict, List, Union
 CWD = Path(__file__).parent.as_posix()
 INPUTS_DIR = f"{CWD}/inputs"
 OUTPUTS_DIR = f"{CWD}/outputs"
 
 
+# from hypothesis.strategies import composite
+# import hypothesis.strategies as st
+# from datetime import datetime, timedelta
+
+# results_status_vals = ["Incomplete", "Complete", "Failed"]
+
+# user_browser_vals = ["Chrome", "IE", "Firefox", "Safari", "Other"]
+
+# user_device_vals = ["Desktop", "Mobile", "Tablet", "Other"]
+
+# user_os_vals = [
+#     "Windows (deprecated)",
+#     "Linux (deprecated)",
+#     "MacOS (deprecated)",
+#     "iOS (deprecated)",
+#     "Android (deprecated)",
+#     "Other (deprecated)",
+# ]
+
+
+# @composite
+# def form_items(draw, keys = {}):
+#     ...
+
+# @composite
+# def form_result(draw, keys = {}):
+#     isofmt = lambda d: datetime.isoformat(d) + "Z"
+#     dt = st.datetimes(allow_imaginary=False)
+#     off = timedelta(hours=random())
+#     return draw(
+#         st.fixed_dictionaries(
+#             {
+#                 "user_ip": st.ip_addresses(v=4).map(str),
+#                 "user_referrer": st.sampled_from(["N/A", "example.com"]),
+#                 "user_os": st.sampled_from(user_os_vals),
+#                 "login_email": st.emails() | st.none(),
+#                 "date_start": st.shared(dt, key="d").map(isofmt),
+#                 "date_finish": st.shared(dt, key="d").map(lambda d: d + off).map(isofmt),
+#                 "date_update": st.shared(dt, key="d").map(lambda d: d + off).map(isofmt),
+#                 "login_username": st.text() | st.none(),
+#                 "user_device": st.sampled_from(user_device_vals),
+#                 "result_status": st.sampled_from(results_status_vals),
+#                 "user_browser": st.sampled_from(user_browser_vals),
+#                 "id": st.integers(min_value=0),  # todo
+#                 "items": form_items(keys = keys),
+#             }
+#         )
+#     )
+
+
+# @composite
+# def form_page(draw, num_results: int = 10):
+#     return draw(st.lists(form_result(), min_size=num_results, max_size=num_results))
+
+# @composite
+# def results_records(draw, num_results: int = 500, num_pages: int = 1):
+#     ...
+
+def load_json(path: str) -> dict:
+    with open(path, "r", encoding='utf-8') as fp:
+        return json.load(fp)
+
+
 def create_example_results(n: int, page_sz: int = 500) -> dict:
     """Create n example formsite results with all possible controls"""
 
-    pages = [{} for _ in range(ceil(n / 500))]
-    page = []
+    pages: List[Dict[str, Union[str, int]]] = [{} for _ in range(ceil(n / 500))]
+    page: List[Dict[str, Union[str, int]]] = []
     for i in range(n):
         result_template = {
             "user_ip": "IP_ADDR",
