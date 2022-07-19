@@ -1,7 +1,7 @@
 """Defines the FormFetcher object and its logic."""
 
 from time import sleep
-from typing import Dict, Generator, Optional
+from typing import Dict, Generator
 from requests import Session, Response, HTTPError
 from requests.exceptions import ConnectionError as requests_ConnectionError
 from formsite_util.error import (
