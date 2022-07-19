@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "formsite-util"
-version = "2.0.5"
+version = "2.1.0"
 description = "Python library and CLI tool for interacing with the FormSite API"
 authors = ["Jakub Strnad <jakub.strnad@protonmail.com>"]
 license = "MIT"
@@ -26,19 +26,20 @@ packages = [{ include = "formsite_util" }]
 [tool.poetry.dependencies]
 python = "^3.8"
 aiohttp = "^3.8.1"
-requests = "^2.27.1"
-pandas = "^1.3"
-pytz = "^2021.3"
-tqdm = "^4.62.3"
-colorama = "^0.4.4"
-openpyxl = {version = "^3.0.10", optional = true}
-pyarrow = {version = "^7.0.0", optional = true}
-tables = {version = "^3.7.0", optional = true}
-
+requests = "^2.0.0"
+pandas = "^1.4.0"
+pytz = "^2021.0"
+tqdm = "^4.60"
+colorama = "^0.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^5.2"
 black = "^22.1.0"
+types-requests = "^2.28.2"
+types-pytz = "^2022.1.2"
+
+[tool.poetry.extras]
+serialization = ["openpyxl", "pyarrow", "tables"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -46,3 +47,11 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 getform = 'formsite_util.cli:main'
+
+[tool.mypy]
+ignore_missing_imports = true
+exclude = [
+    '^old/.+\.py$',
+    '^formsite_util/legacy/.+\.py$',
+    '^tests/.+\.py$',
+]
