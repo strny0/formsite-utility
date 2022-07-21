@@ -31,7 +31,7 @@ FormsiteLogger: Custom logger you can connect to your own logging
 .legacy.FormsiteParams
 
 """
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 from ._form import FormsiteForm
 from ._list import FormsiteFormsList

@@ -67,6 +67,10 @@ class FormData:
         """Updates self.labels (from current self.items) inplace."""
         if self.items:
             self.labels = FormParser.create_rename_map(self.items)
+            # Remove irrelevant labels
+            for k, _ in self.labels.copy().items():
+                if not k in self._results.columns:
+                    del self.labels[k]
 
     @property
     def results(self) -> pd.DataFrame:
